@@ -5,7 +5,7 @@ import { ref } from 'vue';
 const correo = ref('');
 const password = ref('');
 
-const emit = defineEmits(['iniciar']);
+const emit = defineEmits(['iniciar', 'admin']);
 </script>
 
 <template>
@@ -47,6 +47,15 @@ const emit = defineEmits(['iniciar']);
                     Iniciar sesión
                 </button>
             </form>
+
+            <!-- Acceso temporal para desarrollar el panel -->
+            <button
+                type="button"
+                class="admin-temporal"
+                @click="emit('admin')"
+            >
+                Entrar al panel administrativo
+            </button>
 
             <footer>SIGEI · Acceso institucional</footer>
         </section>
