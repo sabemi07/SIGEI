@@ -1,0 +1,549 @@
+
+<script setup>
+import { computed, ref } from 'vue';
+
+const emit = defineEmits(['gestionar']);
+
+const busqueda = ref('');
+const filtroEstado = ref('Todos');
+const filtroPrioridad = ref('Todas');
+
+const incidentes = ref([
+    {
+        folio: 'SIG-2026-001',
+        tipo: 'Emergencia médica',
+        ubicacion: 'Edificio A · Planta baja',
+        fecha: '19/10/2026',
+        hora: '10:42',
+        reportante: 'Usuario de demostración',
+        descripcion: 'Persona que requiere asistencia médica.',
+        prioridad: 'Alta',
+        estado: 'Pendiente',
+        responsable: 'Sin asignar',
+        observaciones: '',
+    },
+    {
+        folio: 'SIG-2026-002',
+        tipo: 'Incidente de seguridad',
+        ubicacion: 'Acceso principal',
+        fecha: '19/10/2026',
+        hora: '10:28',
+        reportante: 'Usuario de demostración',
+        descripcion: 'Se solicita revisar una situación en el acceso principal.',
+        prioridad: 'Media',
+        estado: 'En atención',
+        responsable: 'Personal de seguridad',
+        observaciones: 'Personal enviado a revisar la situación.',
+    },
+    {
+        folio: 'SIG-2026-003',
+        tipo: 'Accidente',
+        ubicacion: 'Laboratorio 2',
+        fecha: '19/10/2026',
+        hora: '09:55',
+        reportante: 'Usuario de demostración',
+        descripcion: 'Se reporta un accidente dentro del laboratorio.',
+        prioridad: 'Alta',
+        estado: 'Pendiente',
+        responsable: 'Sin asignar',
+        observaciones: '',
+    },
+    {
+        folio: 'SIG-2026-004',
+        tipo: 'Situación de riesgo',
+        ubicacion: 'Edificio B · Segundo piso',
+        fecha: '19/10/2026',
+        hora: '09:30',
+        reportante: 'Usuario de demostración',
+        descripcion: 'Situación revisada por el personal responsable.',
+        prioridad: 'Baja',
+        estado: 'Atendida',
+        responsable: 'Personal administrativo',
+        observaciones: 'Revisión completada.',
+    },
+    {
+        folio: 'SIG-2026-005',
+        tipo: 'Emergencia médica',
+        ubicacion: 'Cancha deportiva',
+        fecha: '19/10/2026',
+        hora: '09:12',
+        reportante: 'Usuario de demostración',
+        descripcion: 'Se solicita apoyo en el área deportiva.',
+        prioridad: 'Media',
+        estado: 'Cerrada',
+        responsable: 'Personal médico',
+        observaciones: 'Caso cerrado en la demostración.',
+    },
+]);
+
+const estados = [
+    'Pendiente',
+    'Recibida',
+    'En atención',
+    'Atendida',
+    'Cerrada',
+];
+
+const incidentesFiltrados = computed(() => {
+    const texto = busqueda.value.trim().toLowerCase();
+
+    return incidentes.value.filter((incidente) => {
+        const coincideTexto = [
+            incidente.folio,
+            incidente.tipo,
+            incidente.ubicacion,
+        ].some((valor) => valor.toLowerCase().includes(texto));
+
+        const coincideEstado =
+            filtroEstado.value === 'Todos' ||
+            incidente.estado === filtroEstado.value;
+
+        const coincidePrioridad =
+            filtroPrioridad.value === 'Todas' ||
+            incidente.prioridad === filtroPrioridad.value;
+
+        return coincideTexto && coincideEstado && coincidePrioridad;
+    });
+});
+
+const pendientes = computed(() =>
+    incidentes.value.filter(i => i.estado === 'Pendiente').length
+);
+
+const enAtencion = computed(() =>
+    incidentes.value.filter(i => i.estado === 'En atención').length
+);
+
+const finalizados = computed(() =>
+    incidentes.value.filter(i =>
+        ['Atendida', 'Cerrada'].includes(i.estado)
+    ).length
+);
+
+function limpiarFiltros() {
+    busqueda.value = '';
+    filtroEstado.value = 'Todos';
+    filtroPrioridad.value = 'Todas';
+}
+
+function gestionarIncidente(incidente) {
+    emit('gestionar', incidente);
+}
+</script>
+
+<template>
+    <div class="incidents-page">
+        <div class="demo-notice">
+            <span class="notice-icon">i</span>
+            <span>
+                <strong>Modo demostración:</strong>
+                los incidentes son ficticios. Los datos no se guardan
+                en una base de datos.
+            </span>
+        </div>
+
+        <section class="stats-grid">
+            <article class="stat-card">
+                <span>Total de incidentes</span>
+                <strong>{{ incidentes.length }}</strong>
+                <small>Registros de demostración</small>
+            </article>
+
+            <article class="stat-card">
+                <span>Pendientes</span>
+                <strong class="red">{{ pendientes }}</strong>
+                <small>Esperando atención</small>
+            </article>
+
+            <article class="stat-card">
+                <span>En atención</span>
+                <strong class="blue">{{ enAtencion }}</strong>
+                <small>En proceso</small>
+            </article>
+
+            <article class="stat-card">
+                <span>Atendidos o cerrados</span>
+                <strong class="green">{{ finalizados }}</strong>
+                <small>Seguimiento finalizado</small>
+            </article>
+        </section>
+
+        <section class="incidents-panel">
+            <header class="panel-header">
+                <div>
+                    <h2>Registro de incidentes</h2>
+                    <p>Consulta los casos registrados y accede a su seguimiento.</p>
+                </div>
+
+                <span class="result-count">
+                    {{ incidentesFiltrados.length }} resultados
+                </span>
+            </header>
+
+            <div class="filters">
+                <input
+                    v-model="busqueda"
+                    type="search"
+                    placeholder="Buscar por folio, incidente o ubicación..."
+                    aria-label="Buscar incidentes"
+                />
+
+                <select v-model="filtroEstado" aria-label="Filtrar por estado">
+                    <option>Todos</option>
+                    <option v-for="estado in estados" :key="estado">
+                        {{ estado }}
+                    </option>
+                </select>
+
+                <select
+                    v-model="filtroPrioridad"
+                    aria-label="Filtrar por prioridad"
+                >
+                    <option>Todas</option>
+                    <option>Alta</option>
+                    <option>Media</option>
+                    <option>Baja</option>
+                </select>
+
+                <button class="clear-button" @click="limpiarFiltros">
+                    Limpiar
+                </button>
+            </div>
+
+            <div class="table-responsive">
+                <table class="incidents-table">
+                    <thead>
+                        <tr>
+                            <th>Folio / Fecha</th>
+                            <th>Tipo de incidente</th>
+                            <th>Ubicación</th>
+                            <th>Prioridad</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        <tr
+                            v-for="incidente in incidentesFiltrados"
+                            :key="incidente.folio"
+                        >
+                            <td>
+                                <strong class="folio">{{ incidente.folio }}</strong>
+                                <small>
+                                    {{ incidente.fecha }} · {{ incidente.hora }}
+                                </small>
+                            </td>
+
+                            <td class="incident-title">{{ incidente.tipo }}</td>
+
+                            <td>{{ incidente.ubicacion }}</td>
+
+                            <td>
+                                <span
+                                    class="pill"
+                                    :class="'priority-' + incidente.prioridad.toLowerCase()"
+                                >
+                                    {{ incidente.prioridad }}
+                                </span>
+                            </td>
+
+                            <td>
+                                <span
+                                    class="pill"
+                                    :class="'state-' + incidente.estado.toLowerCase().replaceAll(' ', '-')"
+                                >
+                                    {{ incidente.estado }}
+                                </span>
+                            </td>
+
+                            <td>
+                                <button
+                                    class="detail-button"
+                                    @click="gestionarIncidente(incidente)"
+                                >
+                                    Gestionar
+                                </button>
+                            </td>
+                        </tr>
+
+                        <tr v-if="incidentesFiltrados.length === 0">
+                            <td colspan="6" class="empty-state">
+                                No se encontraron incidentes con esos filtros.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <footer class="table-footer">
+                Mostrando {{ incidentesFiltrados.length }}
+                de {{ incidentes.length }} incidentes de demostración.
+            </footer>
+        </section>
+    </div>
+</template>
+
+<style scoped>
+.incidents-page {
+    display: grid;
+    gap: 22px;
+    color: #26364a;
+}
+
+.demo-notice {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 13px 16px;
+    border: 1px solid #cbdcfb;
+    border-radius: 9px;
+    background: #eef5ff;
+    color: #415b80;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.notice-icon {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #d7e6ff;
+    color: #285bd1;
+    font-weight: 800;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 15px;
+}
+
+.stat-card {
+    display: grid;
+    gap: 10px;
+    padding: 20px;
+    border: 1px solid #e6ebf2;
+    border-radius: 11px;
+    background: white;
+}
+
+.stat-card span {
+    color: #718096;
+    font-size: 11px;
+}
+
+.stat-card strong {
+    font-size: 29px;
+}
+
+.stat-card small {
+    color: #94a0af;
+    font-size: 10px;
+}
+
+.red { color: #d93636; }
+.blue { color: #285bd1; }
+.green { color: #198754; }
+
+.incidents-panel {
+    overflow: hidden;
+    border: 1px solid #e6ebf2;
+    border-radius: 12px;
+    background: white;
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px;
+    padding: 22px;
+}
+
+.panel-header h2 {
+    margin: 0 0 6px;
+    font-size: 16px;
+    font-weight: 750;
+}
+
+.panel-header p {
+    margin: 0;
+    color: #8491a3;
+    font-size: 12px;
+}
+
+.result-count {
+    padding: 7px 10px;
+    border-radius: 6px;
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 0 22px 20px;
+}
+
+.filters input,
+.filters select {
+    min-width: 130px;
+    padding: 10px 12px;
+    border: 1px solid #dfe6ef;
+    border-radius: 7px;
+    background: white;
+    color: #536277;
+    font-size: 11px;
+}
+
+.filters input {
+    flex: 1;
+    min-width: 200px;
+}
+
+.clear-button {
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 7px;
+    background: #eef2f7;
+    color: #536277;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.incidents-table {
+    width: 100%;
+    border-collapse: collapse;
+    white-space: nowrap;
+}
+
+.incidents-table th {
+    padding: 13px 16px;
+    background: #f8fafc;
+    color: #7f8da0;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 750;
+}
+
+.incidents-table td {
+    padding: 15px 16px;
+    border-top: 1px solid #edf1f6;
+    color: #566579;
+    font-size: 11px;
+}
+
+.incidents-table tbody tr:hover {
+    background: #fbfdff;
+}
+
+.incidents-table td small {
+    display: block;
+    margin-top: 5px;
+    color: #94a0af;
+    font-size: 10px;
+}
+
+.folio {
+    color: #285bd1;
+    font-weight: 750;
+}
+
+.incident-title {
+    color: #26364a !important;
+    font-weight: 650;
+}
+
+.pill {
+    display: inline-block;
+    padding: 5px 8px;
+    border-radius: 5px;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.priority-alta,
+.state-pendiente {
+    background: #fff0f0;
+    color: #cf3434;
+}
+
+.priority-media,
+.state-recibida {
+    background: #fff5df;
+    color: #a76c08;
+}
+
+.priority-baja,
+.state-atendida,
+.state-cerrada {
+    background: #e8f8ef;
+    color: #198754;
+}
+
+.state-en-atención {
+    background: #eaf1ff;
+    color: #285bd1;
+}
+
+.detail-button {
+    padding: 7px 10px;
+    border: 1px solid #d5e1f8;
+    border-radius: 6px;
+    background: white;
+    color: #285bd1;
+    font-size: 10px;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.detail-button:hover {
+    background: #eef5ff;
+}
+
+.empty-state {
+    padding: 35px !important;
+    color: #8491a3 !important;
+    text-align: center;
+}
+
+.table-footer {
+    padding: 13px 18px;
+    border-top: 1px solid #edf1f6;
+    color: #8995a5;
+    font-size: 10px;
+}
+
+@media (max-width: 1000px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 650px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .panel-header {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 18px;
+    }
+
+    .filters {
+        padding: 0 15px 16px;
+    }
+
+    .filters input {
+        min-width: 100%;
+    }
+}
+</style>
