@@ -2,39 +2,27 @@
 <script setup>
 import { ref } from 'vue';
 
-
-import Incidentes from './admin/Incidentes.vue';
 import Login from './Login.vue';
 import BotonPanico from './BotonPanico.vue';
 
 import AdminLayout from './admin/AdminLayout.vue';
 import Dashboard from './admin/Dashboard.vue';
-
 import Alertas from './admin/Alertas.vue';
-
+import Incidentes from './admin/Incidentes.vue';
 import DetalleIncidente from './admin/DetalleIncidente.vue';
+
+const pantalla = ref('login');
+const rolActual = ref(null);
+const vistaAdmin = ref('dashboard');
 
 const incidenteSeleccionado = ref(null);
 const origenDetalle = ref('alertas');
 
-function abrirDetalleIncidente(incidente, origen = 'alertas') {
-    incidenteSeleccionado.value = incidente;
-    origenDetalle.value = origen;
-    vistaAdmin.value = 'detalle-incidente';
-}
-
-function volverDeDetalle() {
-    vistaAdmin.value = origenDetalle.value;
-    incidenteSeleccionado.value = null;
-}
-
-function volverAAlertas() {
-    vistaAdmin.value = 'alertas';
-    incidenteSeleccionado.value = null;
-}
-
-const pantalla = ref('login');
-const vistaAdmin = ref('dashboard');
+const nombresRoles = {
+    usuario: 'Usuario',
+    responsable: 'Responsable',
+    administrador: 'Administrador',
+};
 
 const titulosAdmin = {
     alertas: 'Gestión de alertas',
@@ -45,21 +33,69 @@ const titulosAdmin = {
     configuracion: 'Configuración del sistema',
 };
 
-function iniciarSesion() {
+function iniciarSesion(rol = 'usuario') {
+    if (!Object.prototype.hasOwnProperty.call(nombresRoles, rol)) {
+        return;
+    }
+
+    rolActual.value = rol;
+    vistaAdmin.value = 'dashboard';
+    incidenteSeleccionado.value = null;
+    origenDetalle.value = 'alertas';
+
+    if (rol === 'administrador') {
+        pantalla.value = 'admin';
+    } else if (rol === 'responsable') {
+        pantalla.value = 'responsable';
+    } else {
+        pantalla.value = 'panico';
+    }
+}
+
+// Conservamos el acceso temporal del login.
+function entrarAdmin() {
+    iniciarSesion('administrador');
+}
+
+function cerrarSesion() {
+    pantalla.value = 'login';
+    rolActual.value = null;
+    vistaAdmin.value = 'dashboard';
+    incidenteSeleccionado.value = null;
+    origenDetalle.value = 'alertas';
+}
+
+function abrirBotonPanico() {
+    if (!rolActual.value) return;
+
     pantalla.value = 'panico';
 }
 
-function entrarAdmin() {
-    vistaAdmin.value = 'dashboard';
-    pantalla.value = 'admin';
-}
-
-function cerrarPanelAdmin() {
-    pantalla.value = 'login';
+function volverAlPanel() {
+    if (rolActual.value === 'administrador') {
+        pantalla.value = 'admin';
+    } else if (rolActual.value === 'responsable') {
+        pantalla.value = 'responsable';
+    }
 }
 
 function cambiarVistaAdmin(vista) {
+    if (rolActual.value !== 'administrador') return;
+
     vistaAdmin.value = vista;
+}
+
+function abrirDetalleIncidente(incidente, origen = 'alertas') {
+    if (rolActual.value !== 'administrador') return;
+
+    incidenteSeleccionado.value = incidente;
+    origenDetalle.value = origen;
+    vistaAdmin.value = 'detalle-incidente';
+}
+
+function volverDeDetalle() {
+    vistaAdmin.value = origenDetalle.value;
+    incidenteSeleccionado.value = null;
 }
 </script>
 
@@ -70,57 +106,140 @@ function cambiarVistaAdmin(vista) {
         @admin="entrarAdmin"
     />
 
-    <BotonPanico
-        v-else-if="pantalla === 'panico'"
-    />
+    <template v-else>
+        <!-- Controles temporales para recorrer el diseño por roles -->
+        <header
+            class="demo-session-bar d-flex flex-wrap align-items-center
+                   justify-content-between gap-3 px-3 py-2 border-bottom bg-white"
+        >
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <span class="fw-bold">SIGEI</span>
 
-    <AdminLayout
-        v-else-if="pantalla === 'admin'"
-        :active-view="vistaAdmin"
-        @navigate="cambiarVistaAdmin"
-        @logout="cerrarPanelAdmin"
-    >
-        <Dashboard
-            v-if="vistaAdmin === 'dashboard'"
-            @navigate="cambiarVistaAdmin"
-        />
-        <Alertas
-            v-else-if="vistaAdmin === 'alertas'"
-            @gestionar="abrirDetalleIncidente($event, 'alertas')"
-        />
+                <span class="badge text-bg-primary">
+                    {{ nombresRoles[rolActual] }}
+                </span>
 
-        <Incidentes
-            v-else-if="vistaAdmin === 'incidentes'"
-            @gestionar="abrirDetalleIncidente($event, 'incidentes')"
-        />
+                <small class="text-secondary">
+                    Modo demostración
+                </small>
+            </div>
 
-        <DetalleIncidente
-            v-else-if="vistaAdmin === 'detalle-incidente'"
-            :incidente="incidenteSeleccionado"
-            @volver="volverDeDetalle"
-        />
-
-        <section v-else class="admin-coming-soon">
-            <div class="coming-soon-icon">▦</div>
-
-            <h2>{{ titulosAdmin[vistaAdmin] }}</h2>
-
-            <p>
-                Esta sección está preparada para integrarse
-                próximamente en SIGEI.
-            </p>
-
-            <button
-                type="button"
-                class="btn btn-primary"
-                @click="cambiarVistaAdmin('dashboard')"
+            <nav
+                class="d-flex flex-wrap gap-2"
+                aria-label="Navegación de demostración"
             >
-                Volver al dashboard
-            </button>
-        </section>
-    </AdminLayout>
-</template>
+                <button
+                    v-if="pantalla !== 'panico'"
+                    type="button"
+                    class="btn btn-outline-danger btn-sm"
+                    @click="abrirBotonPanico"
+                >
+                    Reportar emergencia
+                </button>
 
+                <button
+                    v-if="
+                        pantalla === 'panico' &&
+                        (
+                            rolActual === 'administrador' ||
+                            rolActual === 'responsable'
+                        )
+                    "
+                    type="button"
+                    class="btn btn-outline-primary btn-sm"
+                    @click="volverAlPanel"
+                >
+                    Volver al panel
+                </button>
+
+                <button
+                    type="button"
+                    class="btn btn-outline-secondary btn-sm"
+                    @click="cerrarSesion"
+                >
+                    Cerrar sesión
+                </button>
+            </nav>
+        </header>
+
+        <BotonPanico
+            v-if="pantalla === 'panico'"
+        />
+
+        <main
+            v-else-if="
+                pantalla === 'responsable' &&
+                rolActual === 'responsable'
+            "
+            class="container py-4"
+        >
+            <section class="admin-coming-soon">
+                <div class="coming-soon-icon">▦</div>
+
+                <h2>Panel del responsable</h2>
+
+                <p>
+                    Aquí diseñaremos la consulta de alertas asignadas
+                    y el seguimiento de los incidentes a tu cargo.
+                </p>
+
+                <span class="badge text-bg-light border">
+                    Vista pendiente de diseño
+                </span>
+            </section>
+        </main>
+
+        <AdminLayout
+            v-else-if="
+                pantalla === 'admin' &&
+                rolActual === 'administrador'
+            "
+            :active-view="vistaAdmin"
+            @navigate="cambiarVistaAdmin"
+            @logout="cerrarSesion"
+        >
+            <Dashboard
+                v-if="vistaAdmin === 'dashboard'"
+                @navigate="cambiarVistaAdmin"
+            />
+
+            <Alertas
+                v-else-if="vistaAdmin === 'alertas'"
+                @gestionar="abrirDetalleIncidente($event, 'alertas')"
+            />
+
+            <Incidentes
+                v-else-if="vistaAdmin === 'incidentes'"
+                @gestionar="abrirDetalleIncidente($event, 'incidentes')"
+            />
+
+            <DetalleIncidente
+                v-else-if="vistaAdmin === 'detalle-incidente'"
+                :incidente="incidenteSeleccionado"
+                @volver="volverDeDetalle"
+            />
+
+            <section v-else class="admin-coming-soon">
+                <div class="coming-soon-icon">▦</div>
+
+                <h2>{{ titulosAdmin[vistaAdmin] }}</h2>
+
+                <p>
+                    Esta sección está preparada para integrarse
+                    próximamente en SIGEI.
+                </p>
+
+                <button
+                    type="button"
+                    class="btn btn-primary"
+                    @click="cambiarVistaAdmin('dashboard')"
+                >
+                    Volver al dashboard
+                </button>
+            </section>
+        </AdminLayout>
+    </template>
+</template>
 <style>
 .admin-coming-soon {
     display: flex;

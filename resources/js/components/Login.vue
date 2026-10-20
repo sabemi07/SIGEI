@@ -1,11 +1,15 @@
-
 <script setup>
 import { ref } from 'vue';
 
 const correo = ref('');
 const password = ref('');
+const rolDemo = ref('usuario');
 
-const emit = defineEmits(['iniciar', 'admin']);
+const emit = defineEmits(['iniciar']);
+
+function iniciarSesionDemo() {
+    emit('iniciar', rolDemo.value);
+}
 </script>
 
 <template>
@@ -22,7 +26,7 @@ const emit = defineEmits(['iniciar', 'admin']);
             <h2>Iniciar sesión</h2>
             <p>Ingresa tus datos para continuar.</p>
 
-            <form @submit.prevent="emit('iniciar')">
+            <form @submit.prevent="iniciarSesionDemo">
                 <label for="correo">Correo institucional</label>
                 <input
                     id="correo"
@@ -43,19 +47,35 @@ const emit = defineEmits(['iniciar', 'admin']);
                     required
                 />
 
+                <div class="mt-3 mb-3">
+                    <label for="rol-demo">
+                        Rol de demostración
+                    </label>
+
+                    <select
+                        id="rol-demo"
+                        v-model="rolDemo"
+                        class="form-select"
+                        aria-describedby="rol-demo-ayuda"
+                    >
+                        <option value="usuario">Usuario</option>
+                        <option value="responsable">Responsable</option>
+                        <option value="administrador">Administrador</option>
+                    </select>
+
+                    <small
+                        id="rol-demo-ayuda"
+                        class="d-block text-secondary mt-2"
+                    >
+                        Selector temporal para visualizar las interfaces
+                        de cada rol.
+                    </small>
+                </div>
+
                 <button type="submit">
                     Iniciar sesión
                 </button>
             </form>
-
-            <!-- Acceso temporal para desarrollar el panel -->
-            <button
-                type="button"
-                class="admin-temporal"
-                @click="emit('admin')"
-            >
-                Entrar al panel administrativo
-            </button>
 
             <footer>SIGEI · Acceso institucional</footer>
         </section>
