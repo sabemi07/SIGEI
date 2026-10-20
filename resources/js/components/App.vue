@@ -4,16 +4,19 @@ import { ref } from 'vue';
 
 import Login from './Login.vue';
 import BotonPanico from './BotonPanico.vue';
-
+import ResponsableLayout from './responsable/ResponsableLayout.vue';
+import AlertasAsignadas from './responsable/AlertasAsignadas.vue';
 import AdminLayout from './admin/AdminLayout.vue';
 import Dashboard from './admin/Dashboard.vue';
 import Alertas from './admin/Alertas.vue';
 import Incidentes from './admin/Incidentes.vue';
 import DetalleIncidente from './admin/DetalleIncidente.vue';
+import MisReportes from './responsable/MisReportes.vue';
 
 const pantalla = ref('login');
 const rolActual = ref(null);
 const vistaAdmin = ref('dashboard');
+const vistaResponsable = ref('alertas');
 
 const incidenteSeleccionado = ref(null);
 const origenDetalle = ref('alertas');
@@ -40,6 +43,7 @@ function iniciarSesion(rol = 'usuario') {
 
     rolActual.value = rol;
     vistaAdmin.value = 'dashboard';
+    vistaResponsable.value = 'alertas';
     incidenteSeleccionado.value = null;
     origenDetalle.value = 'alertas';
 
@@ -52,6 +56,13 @@ function iniciarSesion(rol = 'usuario') {
     }
 }
 
+function cambiarVistaResponsable(vista) {
+    if (rolActual.value !== 'responsable') return;
+
+    if (['alertas', 'mis-reportes'].includes(vista)) {
+        vistaResponsable.value = vista;
+    }
+}
 // Conservamos el acceso temporal del login.
 function entrarAdmin() {
     iniciarSesion('administrador');
@@ -166,28 +177,24 @@ function volverDeDetalle() {
             v-if="pantalla === 'panico'"
         />
 
-        <main
-            v-else-if="
-                pantalla === 'responsable' &&
-                rolActual === 'responsable'
-            "
-            class="container py-4"
-        >
-            <section class="admin-coming-soon">
-                <div class="coming-soon-icon">▦</div>
+            <ResponsableLayout
+        v-else-if="
+            pantalla === 'responsable' &&
+            rolActual === 'responsable'
+        "
+        :active-view="vistaResponsable"
+        @navigate="cambiarVistaResponsable"
+        @reportar="abrirBotonPanico"
+        @logout="cerrarSesion"
+    >
+        <AlertasAsignadas
+            v-if="vistaResponsable === 'alertas'"
+        />
 
-                <h2>Panel del responsable</h2>
-
-                <p>
-                    Aquí diseñaremos la consulta de alertas asignadas
-                    y el seguimiento de los incidentes a tu cargo.
-                </p>
-
-                <span class="badge text-bg-light border">
-                    Vista pendiente de diseño
-                </span>
-            </section>
-        </main>
+        <MisReportes
+            v-else-if="vistaResponsable === 'mis-reportes'"
+        />
+        </ResponsableLayout>
 
         <AdminLayout
             v-else-if="
