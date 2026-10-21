@@ -94,6 +94,13 @@ function navegar(id) {
                 </div>
 
                 <div class="admin-profile">
+                    <button
+                        type="button"
+                        class="btn btn-outline-secondary btn-sm mobile-logout"
+                        @click="emit('logout')"
+                    >
+                        Cerrar sesión
+                    </button>
                     <div class="admin-profile-avatar">AD</div>
 
                     <div class="admin-profile-info">
@@ -390,6 +397,16 @@ function navegar(id) {
 
     .admin-footer {
         padding: 14px 20px;
+    }
+}
+.mobile-logout {
+    display: none;
+}
+
+@media (max-width: 760px) {
+    .mobile-logout {
+        display: inline-flex;
+        flex-shrink: 0;
     }
 }
 </style>
