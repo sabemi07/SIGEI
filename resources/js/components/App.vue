@@ -12,11 +12,12 @@ import Alertas from './admin/Alertas.vue';
 import Incidentes from './admin/Incidentes.vue';
 import DetalleIncidente from './admin/DetalleIncidente.vue';
 import MisReportes from './responsable/MisReportes.vue';
-
+import UsuarioLayout from './usuario/UsuarioLayout.vue';
 const pantalla = ref('login');
 const rolActual = ref(null);
 const vistaAdmin = ref('dashboard');
 const vistaResponsable = ref('alertas');
+const vistaUsuario = ref('reportar');
 
 const incidenteSeleccionado = ref(null);
 const origenDetalle = ref('alertas');
@@ -40,19 +41,20 @@ function iniciarSesion(rol = 'usuario') {
     if (!Object.prototype.hasOwnProperty.call(nombresRoles, rol)) {
         return;
     }
-
+    
     rolActual.value = rol;
     vistaAdmin.value = 'dashboard';
     vistaResponsable.value = 'alertas';
     incidenteSeleccionado.value = null;
     origenDetalle.value = 'alertas';
+    vistaUsuario.value = 'reportar';
 
     if (rol === 'administrador') {
         pantalla.value = 'admin';
     } else if (rol === 'responsable') {
         pantalla.value = 'responsable';
     } else {
-        pantalla.value = 'panico';
+        pantalla.value = 'usuario';
     }
 }
 
@@ -63,10 +65,7 @@ function cambiarVistaResponsable(vista) {
         vistaResponsable.value = vista;
     }
 }
-// Conservamos el acceso temporal del login.
-function entrarAdmin() {
-    iniciarSesion('administrador');
-}
+
 
 function cerrarSesion() {
     pantalla.value = 'login';
@@ -74,12 +73,19 @@ function cerrarSesion() {
     vistaAdmin.value = 'dashboard';
     incidenteSeleccionado.value = null;
     origenDetalle.value = 'alertas';
+    vistaUsuario.value = 'reportar';
+    vistaResponsable.value = 'alertas';
 }
 
 function abrirBotonPanico() {
     if (!rolActual.value) return;
 
-    pantalla.value = 'panico';
+    if (rolActual.value === 'usuario') {
+        vistaUsuario.value = 'reportar';
+        pantalla.value = 'usuario';
+    } else {
+        pantalla.value = 'panico';
+    }
 }
 
 function volverAlPanel() {
@@ -108,13 +114,20 @@ function volverDeDetalle() {
     vistaAdmin.value = origenDetalle.value;
     incidenteSeleccionado.value = null;
 }
+
+function cambiarVistaUsuario(vista) {
+    if (rolActual.value !== 'usuario') return;
+
+    if (['reportar', 'mis-reportes'].includes(vista)) {
+        vistaUsuario.value = vista;
+    }
+}
 </script>
 
 <template>
     <Login
         v-if="pantalla === 'login'"
         @iniciar="iniciarSesion"
-        @admin="entrarAdmin"
     />
 
     <template v-else>
@@ -140,7 +153,10 @@ function volverDeDetalle() {
                 aria-label="Navegación de demostración"
             >
                 <button
-                    v-if="pantalla !== 'panico'"
+                    v-if="
+                        pantalla !== 'panico' &&
+                        !(pantalla === 'usuario' && vistaUsuario === 'reportar')
+                    "
                     type="button"
                     class="btn btn-outline-danger btn-sm"
                     @click="abrirBotonPanico"
@@ -173,9 +189,44 @@ function volverDeDetalle() {
             </nav>
         </header>
 
+            <UsuarioLayout
+        v-if="
+            pantalla === 'usuario' &&
+            rolActual === 'usuario'
+        "
+        :active-view="vistaUsuario"
+        @navigate="cambiarVistaUsuario"
+        @logout="cerrarSesion"
+    >
         <BotonPanico
-            v-if="pantalla === 'panico'"
+            v-if="vistaUsuario === 'reportar'"
         />
+
+        <section v-else class="admin-coming-soon">
+            <div class="coming-soon-icon">▤</div>
+
+            <h2>Mis reportes</h2>
+
+            <p>
+                Aquí podrás consultar el estado y los avances
+                de las emergencias que hayas reportado.
+            </p>
+
+            <span class="badge text-bg-light border">
+                Contenido pendiente de diseño
+            </span>
+        </section>
+    </UsuarioLayout>
+
+            <BotonPanico
+                v-else-if="
+                    pantalla === 'panico' &&
+                    (
+                        rolActual === 'administrador' ||
+                        rolActual === 'responsable'
+                    )
+                "
+            />
 
             <ResponsableLayout
         v-else-if="

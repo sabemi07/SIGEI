@@ -53,7 +53,7 @@ function reiniciar() {
 </script>
 
 <template>
-    <main class="panic-page">
+    <div class="panic-page">
         <header class="panic-header">
             <div class="brand-mark">+</div>
 
@@ -246,5 +246,5 @@ function reiniciar() {
                 </form>
             </section>
         </div>
-    </main>
+    </div>
 </template>
