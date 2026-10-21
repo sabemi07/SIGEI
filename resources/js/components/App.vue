@@ -131,64 +131,6 @@ function cambiarVistaUsuario(vista) {
     />
 
     <template v-else>
-        <!-- Controles temporales para recorrer el diseño por roles -->
-        <header
-            class="demo-session-bar d-flex flex-wrap align-items-center
-                   justify-content-between gap-3 px-3 py-2 border-bottom bg-white"
-        >
-            <div class="d-flex flex-wrap align-items-center gap-2">
-                <span class="fw-bold">SIGEI</span>
-
-                <span class="badge text-bg-primary">
-                    {{ nombresRoles[rolActual] }}
-                </span>
-
-                <small class="text-secondary">
-                    Modo demostración
-                </small>
-            </div>
-
-            <nav
-                class="d-flex flex-wrap gap-2"
-                aria-label="Navegación de demostración"
-            >
-                <button
-                    v-if="
-                        pantalla !== 'panico' &&
-                        !(pantalla === 'usuario' && vistaUsuario === 'reportar')
-                    "
-                    type="button"
-                    class="btn btn-outline-danger btn-sm"
-                    @click="abrirBotonPanico"
-                >
-                    Reportar emergencia
-                </button>
-
-                <button
-                    v-if="
-                        pantalla === 'panico' &&
-                        (
-                            rolActual === 'administrador' ||
-                            rolActual === 'responsable'
-                        )
-                    "
-                    type="button"
-                    class="btn btn-outline-primary btn-sm"
-                    @click="volverAlPanel"
-                >
-                    Volver al panel
-                </button>
-
-                <button
-                    type="button"
-                    class="btn btn-outline-secondary btn-sm"
-                    @click="cerrarSesion"
-                >
-                    Cerrar sesión
-                </button>
-            </nav>
-        </header>
-
             <UsuarioLayout
         v-if="
             pantalla === 'usuario' &&
