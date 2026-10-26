@@ -1,4 +1,5 @@
 <script setup>
+import Notificaciones from '../Notificaciones.vue';
 defineProps({
     activeView: {
         type: String,
@@ -101,6 +102,10 @@ const titulos = {
                 </div>
 
                 <div class="responsable-profile">
+                <Notificaciones
+                    rol="responsable"
+                    @navigate="emit('navigate', $event)"
+                />
                     <button
                         type="button"
                         class="btn btn-outline-secondary btn-sm mobile-logout"
@@ -432,6 +437,16 @@ const titulos = {
     .mobile-logout {
         display: inline-flex;
         flex-shrink: 0;
+    }
+}
+@media (max-width: 560px) {
+    .responsable-topbar {
+        flex-wrap: wrap;
+    }
+
+    .responsable-profile {
+        width: 100%;
+        justify-content: flex-end;
     }
 }
 </style>

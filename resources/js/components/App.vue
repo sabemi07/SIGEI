@@ -8,54 +8,47 @@ import ResponsableLayout from './responsable/ResponsableLayout.vue';
 import AlertasAsignadas from './responsable/AlertasAsignadas.vue';
 import AdminLayout from './admin/AdminLayout.vue';
 import Dashboard from './admin/Dashboard.vue';
-import Alertas from './admin/Alertas.vue';
 import Incidentes from './admin/Incidentes.vue';
 import DetalleIncidente from './admin/DetalleIncidente.vue';
 import MisReportes from './responsable/MisReportes.vue';
-import UsuarioLayout from './usuario/UsuarioLayout.vue';
-const pantalla = ref('login');
+import Usuarios from './admin/Usuarios.vue';
+import Reportes from './admin/Reportes.vue';
+import Configuracion from './admin/Configuracion.vue';
+const pantalla = ref('panico');
 const rolActual = ref(null);
 const vistaAdmin = ref('dashboard');
 const vistaResponsable = ref('alertas');
-const vistaUsuario = ref('reportar');
 
 const incidenteSeleccionado = ref(null);
-const origenDetalle = ref('alertas');
+const origenDetalle = ref('incidentes');
 
 const nombresRoles = {
-    usuario: 'Usuario',
     responsable: 'Responsable',
     administrador: 'Administrador',
 };
 
 const titulosAdmin = {
-    alertas: 'Gestión de alertas',
+    dashboard: 'Dashboard',
     incidentes: 'Gestión de incidentes',
-    historial: 'Historial de incidentes',
     usuarios: 'Usuarios y roles',
     reportes: 'Reportes y estadísticas',
     configuracion: 'Configuración del sistema',
 };
 
-function iniciarSesion(rol = 'usuario') {
+function iniciarSesion(rol = 'responsable') {
     if (!Object.prototype.hasOwnProperty.call(nombresRoles, rol)) {
         return;
     }
-    
+
     rolActual.value = rol;
     vistaAdmin.value = 'dashboard';
     vistaResponsable.value = 'alertas';
     incidenteSeleccionado.value = null;
-    origenDetalle.value = 'alertas';
-    vistaUsuario.value = 'reportar';
+    origenDetalle.value = 'incidentes';
 
-    if (rol === 'administrador') {
-        pantalla.value = 'admin';
-    } else if (rol === 'responsable') {
-        pantalla.value = 'responsable';
-    } else {
-        pantalla.value = 'usuario';
-    }
+    pantalla.value = rol === 'administrador'
+        ? 'admin'
+        : 'responsable';
 }
 
 function cambiarVistaResponsable(vista) {
@@ -68,24 +61,16 @@ function cambiarVistaResponsable(vista) {
 
 
 function cerrarSesion() {
-    pantalla.value = 'login';
+    pantalla.value = 'panico';
     rolActual.value = null;
     vistaAdmin.value = 'dashboard';
     incidenteSeleccionado.value = null;
-    origenDetalle.value = 'alertas';
-    vistaUsuario.value = 'reportar';
+    origenDetalle.value = 'incidentes';
     vistaResponsable.value = 'alertas';
 }
 
 function abrirBotonPanico() {
-    if (!rolActual.value) return;
-
-    if (rolActual.value === 'usuario') {
-        vistaUsuario.value = 'reportar';
-        pantalla.value = 'usuario';
-    } else {
-        pantalla.value = 'panico';
-    }
+    pantalla.value = 'panico';
 }
 
 function volverAlPanel() {
@@ -99,14 +84,28 @@ function volverAlPanel() {
 function cambiarVistaAdmin(vista) {
     if (rolActual.value !== 'administrador') return;
 
-    vistaAdmin.value = vista;
+    // Compatibilidad temporal con los accesos anteriores del Dashboard.
+    const destino = ['alertas', 'historial'].includes(vista)
+        ? 'incidentes'
+        : vista;
+
+    if (!Object.prototype.hasOwnProperty.call(titulosAdmin, destino)) {
+        return;
+    }
+
+    vistaAdmin.value = destino;
+    incidenteSeleccionado.value = null;
 }
 
-function abrirDetalleIncidente(incidente, origen = 'alertas') {
-    if (rolActual.value !== 'administrador') return;
+function abrirDetalleIncidente(incidente, origen = 'incidentes') {
+    if (rolActual.value !== 'administrador' || !incidente) return;
 
     incidenteSeleccionado.value = incidente;
-    origenDetalle.value = origen;
+    origenDetalle.value = Object.prototype.hasOwnProperty.call(
+        titulosAdmin,
+        origen
+    ) ? origen : 'incidentes';
+
     vistaAdmin.value = 'detalle-incidente';
 }
 
@@ -114,63 +113,80 @@ function volverDeDetalle() {
     vistaAdmin.value = origenDetalle.value;
     incidenteSeleccionado.value = null;
 }
+function guardarSeguimientoIncidente(actualizado) {
+    if (rolActual.value !== 'administrador') return;
 
-function cambiarVistaUsuario(vista) {
-    if (rolActual.value !== 'usuario') return;
+    const original = incidenteSeleccionado.value;
 
-    if (['reportar', 'mis-reportes'].includes(vista)) {
-        vistaUsuario.value = vista;
+    if (
+        !original ||
+        original.folio !== actualizado.folio ||
+        original.estado === 'Cerrada'
+    ) {
+        return;
     }
+
+    Object.assign(original, {
+        responsable: actualizado.responsable,
+        estado: actualizado.estado,
+        observaciones: actualizado.observaciones,
+    });
 }
 </script>
 
 <template>
-    <Login
-        v-if="pantalla === 'login'"
-        @iniciar="iniciarSesion"
-    />
+    <!-- Inicio público: no requiere sesión -->
+<BotonPanico v-if="pantalla === 'panico'">
+    <template #acceso>
+        <button
+            v-if="!rolActual"
+            type="button"
+            class="btn btn-outline-primary btn-sm"
+            @click="pantalla = 'login'"
+        >
+            Iniciar sesión
+        </button>
 
-    <template v-else>
-            <UsuarioLayout
-        v-if="
-            pantalla === 'usuario' &&
-            rolActual === 'usuario'
-        "
-        :active-view="vistaUsuario"
-        @navigate="cambiarVistaUsuario"
-        @logout="cerrarSesion"
-    >
-        <BotonPanico
-            v-if="vistaUsuario === 'reportar'"
-        />
+        <template v-else>
+            <button
+                type="button"
+                class="btn btn-outline-primary btn-sm"
+                @click="volverAlPanel"
+            >
+                Volver a mi panel
+            </button>
 
-        <section v-else class="admin-coming-soon">
-            <div class="coming-soon-icon">▤</div>
+            <button
+                type="button"
+                class="btn btn-outline-secondary btn-sm"
+                @click="cerrarSesion"
+            >
+                Cerrar sesión
+            </button>
+        </template>
+    </template>
+</BotonPanico>
 
-            <h2>Mis reportes</h2>
+    <!-- Acceso a los paneles -->
+    <div v-else-if="pantalla === 'login'">
+        <nav
+            class="public-access"
+            aria-label="Regresar al inicio"
+        >
+            <button
+                type="button"
+                class="btn btn-outline-danger btn-sm"
+                @click="abrirBotonPanico"
+            >
+                Volver al botón de pánico
+            </button>
+        </nav>
 
-            <p>
-                Aquí podrás consultar el estado y los avances
-                de las emergencias que hayas reportado.
-            </p>
+        <Login @iniciar="iniciarSesion" />
+    </div>
 
-            <span class="badge text-bg-light border">
-                Contenido pendiente de diseño
-            </span>
-        </section>
-    </UsuarioLayout>
-
-            <BotonPanico
-                v-else-if="
-                    pantalla === 'panico' &&
-                    (
-                        rolActual === 'administrador' ||
-                        rolActual === 'responsable'
-                    )
-                "
-            />
-
-            <ResponsableLayout
+    <!-- Panel del Responsable -->
+    <ResponsableLayout
         v-else-if="
             pantalla === 'responsable' &&
             rolActual === 'responsable'
@@ -187,59 +203,83 @@ function cambiarVistaUsuario(vista) {
         <MisReportes
             v-else-if="vistaResponsable === 'mis-reportes'"
         />
-        </ResponsableLayout>
+    </ResponsableLayout>
 
-        <AdminLayout
-            v-else-if="
-                pantalla === 'admin' &&
-                rolActual === 'administrador'
-            "
-            :active-view="vistaAdmin"
+    <!-- Panel del Administrador -->
+    <AdminLayout
+        v-else-if="
+            pantalla === 'admin' &&
+            rolActual === 'administrador'
+        "
+        :active-view="
+            vistaAdmin === 'detalle-incidente'
+                ? 'incidentes'
+                : vistaAdmin
+        "
+        @navigate="cambiarVistaAdmin"
+        @logout="cerrarSesion"
+    >
+        <Dashboard
+            v-if="vistaAdmin === 'dashboard'"
             @navigate="cambiarVistaAdmin"
-            @logout="cerrarSesion"
-        >
-            <Dashboard
-                v-if="vistaAdmin === 'dashboard'"
-                @navigate="cambiarVistaAdmin"
-            />
+        />
 
-            <Alertas
-                v-else-if="vistaAdmin === 'alertas'"
-                @gestionar="abrirDetalleIncidente($event, 'alertas')"
-            />
-
+        <KeepAlive>
             <Incidentes
-                v-else-if="vistaAdmin === 'incidentes'"
+                v-if="vistaAdmin === 'incidentes'"
                 @gestionar="abrirDetalleIncidente($event, 'incidentes')"
             />
 
-            <DetalleIncidente
-                v-else-if="vistaAdmin === 'detalle-incidente'"
-                :incidente="incidenteSeleccionado"
-                @volver="volverDeDetalle"
+            <Usuarios
+                v-else-if="vistaAdmin === 'usuarios'"
             />
 
-            <section v-else class="admin-coming-soon">
-                <div class="coming-soon-icon">▦</div>
+            <Reportes
+                v-else-if="vistaAdmin === 'reportes'"
+            />
 
-                <h2>{{ titulosAdmin[vistaAdmin] }}</h2>
+            <Configuracion
+                v-else-if="vistaAdmin === 'configuracion'"
+            />
+        </KeepAlive>
 
-                <p>
-                    Esta sección está preparada para integrarse
-                    próximamente en SIGEI.
-                </p>
+        <DetalleIncidente
+            v-if="vistaAdmin === 'detalle-incidente'"
+            :incidente="incidenteSeleccionado"
+            @guardar="guardarSeguimientoIncidente"
+            @volver="volverDeDetalle"
+        />
 
-                <button
-                    type="button"
-                    class="btn btn-primary"
-                    @click="cambiarVistaAdmin('dashboard')"
-                >
-                    Volver al dashboard
-                </button>
-            </section>
-        </AdminLayout>
-    </template>
-</template>
+        <section
+            v-if="![
+                'dashboard',
+                'incidentes',
+                'detalle-incidente',
+                'usuarios',
+                'reportes',
+                'configuracion',
+            ].includes(vistaAdmin)"
+            class="admin-coming-soon"
+        >
+            <div class="coming-soon-icon">▦</div>
+
+            <h2>{{ titulosAdmin[vistaAdmin] }}</h2>
+
+            <p>
+                Esta sección está preparada para integrarse
+                próximamente en SIGEI.
+            </p>
+
+            <button
+                type="button"
+                class="btn btn-primary"
+                @click="cambiarVistaAdmin('dashboard')"
+            >
+                Volver al dashboard
+            </button>
+        </section>
+    </AdminLayout>
+</template> 
 <style>
 .admin-coming-soon {
     display: flex;
@@ -277,5 +317,40 @@ function cambiarVistaUsuario(vista) {
     margin: 8px 0 22px;
     color: #8491a3;
     font-size: 13px;
+}
+.public-access {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 24px;
+    background: #fff;
+}
+.panic-header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-left: auto;
+}
+
+.panic-header-actions .system-status {
+    margin: 0;
+}
+
+@media (max-width: 576px) {
+    .panic-header {
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .panic-header-actions {
+        width: 100%;
+        justify-content: flex-start;
+        margin-left: 0;
+    }
 }
 </style>

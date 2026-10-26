@@ -4,7 +4,7 @@ const emit = defineEmits(['navigate']);
 
 const indicadores = [
     {
-        titulo: 'Alertas activas',
+        titulo: 'Incidentes activos',
         valor: 3,
         detalle: 'Requieren atención',
         color: 'red',
@@ -25,9 +25,9 @@ const indicadores = [
         icono: '↗',
     },
     {
-        titulo: 'Atendidas hoy',
-        valor: 8,
-        detalle: 'Durante el día',
+        titulo: 'Atendidos',
+        valor: 1,
+        detalle: 'Pendientes de cierre',
         color: 'green',
         icono: '✓',
     },
@@ -115,9 +115,9 @@ const incidentes = [
                 <button
                     class="view-all"
                     type="button"
-                    @click="emit('navigate', 'alertas')"
+                    @click="emit('navigate', 'incidentes')"
                 >
-                    Ver todas las alertas →
+                    Ir a incidentes →
                 </button>
             </div>
 
@@ -143,7 +143,14 @@ const incidentes = [
 
                             <td>
                                 <span
-                                    :class="['status-badge', item.color]"
+                                    :class="[
+                                        'status-badge',
+                                        item.prioridad === 'Alta'
+                                            ? 'red'
+                                            : item.prioridad === 'Media'
+                                            ? 'amber'
+                                            : 'green',
+                                    ]"
                                 >
                                     {{ item.prioridad }}
                                 </span>
@@ -191,12 +198,12 @@ const incidentes = [
             <button
                 type="button"
                 class="quick-card"
-                @click="emit('navigate', 'historial')"
+                @click="emit('navigate', 'usuarios')"
             >
-                <span class="quick-icon purple">◷</span>
+                <span class="quick-icon purple">♙</span>
                 <span>
-                    <strong>Consultar historial</strong>
-                    <small>Revisar reportes anteriores</small>
+                    <strong>Usuarios y roles</strong>
+                    <small>Administrar cuentas y accesos</small>
                 </span>
                 <span class="quick-arrow">→</span>
             </button>

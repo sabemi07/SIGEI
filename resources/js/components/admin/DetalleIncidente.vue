@@ -1,6 +1,6 @@
 
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
     incidente: {
@@ -9,10 +9,19 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(['volver']);
+const emit = defineEmits(['volver', 'guardar']);
 
 const incidenteSeleccionado = ref(null);
 const mensajeGuardado = ref(false);
+const error = ref('');
+
+const estados = [
+    'Pendiente',
+    'Recibida',
+    'En atención',
+    'Atendida',
+    'Cerrada',
+];
 
 watch(
     () => props.incidente,
@@ -26,19 +35,77 @@ watch(
             : null;
 
         mensajeGuardado.value = false;
+        error.value = '';
     },
     { immediate: true }
 );
 
-const estados = [
-    'Pendiente',
-    'Recibida',
-    'En atención',
-    'Atendida',
-    'Cerrada',
-];
+const soloLectura = computed(
+    () => props.incidente?.estado === 'Cerrada'
+);
+
+const estadosDisponibles = computed(() => {
+    const actual = props.incidente?.estado;
+    const posicion = estados.indexOf(actual);
+
+    if (posicion === -1) return [];
+
+    // Permite conservar el estado o avanzar al siguiente.
+    return estados.slice(posicion, posicion + 2);
+});
+
+function marcarCambio() {
+    mensajeGuardado.value = false;
+    error.value = '';
+}
 
 function guardarSeguimiento() {
+    const incidente = incidenteSeleccionado.value;
+
+    if (!incidente || soloLectura.value) return;
+
+    mensajeGuardado.value = false;
+    error.value = '';
+
+    if (!estadosDisponibles.value.includes(incidente.estado)) {
+        error.value = 'Selecciona un estado válido.';
+        return;
+    }
+
+    const responsable = incidente.responsable.trim();
+    const observaciones = incidente.observaciones.trim();
+
+    const requiereResponsable = [
+        'En atención',
+        'Atendida',
+        'Cerrada',
+    ].includes(incidente.estado);
+
+    if (
+        requiereResponsable &&
+        (!responsable || responsable.toLowerCase() === 'sin asignar')
+    ) {
+        error.value = 'Asigna un responsable antes de guardar este estado.';
+        return;
+    }
+
+    if (
+        ['Atendida', 'Cerrada'].includes(incidente.estado) &&
+        !observaciones
+    ) {
+        error.value = 'Describe las acciones realizadas antes de atender o cerrar el caso.';
+        return;
+    }
+
+    const actualizado = {
+        ...incidente,
+        responsable: responsable || 'Sin asignar',
+        observaciones,
+    };
+
+    emit('guardar', actualizado);
+
+    incidenteSeleccionado.value = { ...actualizado };
     mensajeGuardado.value = true;
 }
 
@@ -118,7 +185,7 @@ function cerrarDetalle() {
 
                         <div class="info-field">
                             <label>Estado actual</label>
-                            <strong>{{ incidenteSeleccionado.estado }}</strong>
+                            <strong>{{ props.incidente?.estado }}</strong>
                         </div>
                     </div>
 
@@ -133,7 +200,10 @@ function cerrarDetalle() {
                             id="responsable"
                             v-model="incidenteSeleccionado.responsable"
                             type="text"
+                            maxlength="150"
+                            :disabled="soloLectura"
                             placeholder="Nombre o área responsable"
+                            @input="marcarCambio"
                         />
                     </div>
 
@@ -142,9 +212,11 @@ function cerrarDetalle() {
                         <select
                             id="estado-incidente"
                             v-model="incidenteSeleccionado.estado"
+                            :disabled="soloLectura"
+                            @change="marcarCambio"
                         >
                             <option
-                                v-for="estado in estados"
+                                v-for="estado in estadosDisponibles"
                                 :key="estado"
                                 :value="estado"
                             >
@@ -159,18 +231,36 @@ function cerrarDetalle() {
                             id="observaciones"
                             v-model="incidenteSeleccionado.observaciones"
                             rows="4"
+                            maxlength="2000"
+                            :disabled="soloLectura"
                             placeholder="Describe las acciones realizadas o pendientes..."
+                            @input="marcarCambio"
                         ></textarea>
                     </div>
+                    <div v-if="soloLectura" class="readonly-message">
+                        Este incidente está cerrado y solo se puede consultar.
+                    </div>
 
-                    <div v-if="mensajeGuardado" class="success-message">
-                        ✓ Seguimiento actualizado en esta demostración.
+                    <div v-if="error" class="error-message" role="alert">
+                        {{ error }}
+                    </div>
+                    <div
+                        v-if="mensajeGuardado"
+                        class="success-message"
+                        role="status"
+                    >
+                        ✓ Seguimiento actualizado durante esta sesión de demostración.
                     </div>
                 </div>
 
                 <footer class="modal-footer">
-                    <button class="cancel-button" @click="cerrarDetalle">
-                        Cerrar
+                    <button
+                        v-if="!soloLectura"
+                        type="button"
+                        class="save-button"
+                        @click="guardarSeguimiento"
+                    >
+                        Guardar seguimiento
                     </button>
 
                     <button class="save-button" @click="guardarSeguimiento">
@@ -618,5 +708,33 @@ function cerrarDetalle() {
     .modal-footer {
         padding: 17px;
     }
+}
+.error-message,
+.readonly-message {
+    padding: 11px 13px;
+    border-radius: 7px;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.error-message {
+    border: 1px solid #fecaca;
+    background: #fff0f0;
+    color: #b91c1c;
+}
+
+.readonly-message {
+    border: 1px solid #cbdcfb;
+    background: #eef5ff;
+    color: #415b80;
+}
+
+.form-field input:disabled,
+.form-field select:disabled,
+.form-field textarea:disabled {
+    background: #f8fafc;
+    color: #64748b;
+    opacity: 1;
+    cursor: default;
 }
 </style>

@@ -1,5 +1,5 @@
-
 <script setup>
+import Notificaciones from '../Notificaciones.vue';
 defineProps({
     activeView: {
         type: String,
@@ -11,9 +11,7 @@ const emit = defineEmits(['navigate', 'logout']);
 
 const menu = [
     { id: 'dashboard', label: 'Dashboard', icon: '▦' },
-    { id: 'alertas', label: 'Alertas', icon: '⚠' },
     { id: 'incidentes', label: 'Incidentes', icon: '▤' },
-    { id: 'historial', label: 'Historial', icon: '◷' },
     { id: 'usuarios', label: 'Usuarios', icon: '♙' },
     { id: 'reportes', label: 'Reportes', icon: '▥' },
     { id: 'configuracion', label: 'Configuración', icon: '⚙' },
@@ -21,9 +19,7 @@ const menu = [
 
 const titulos = {
     dashboard: 'Dashboard',
-    alertas: 'Gestión de alertas',
-    incidentes: 'Incidentes',
-    historial: 'Historial de incidentes',
+    incidentes: 'Gestión de incidentes',
     usuarios: 'Usuarios y roles',
     reportes: 'Reportes y estadísticas',
     configuracion: 'Configuración del sistema',
@@ -60,10 +56,7 @@ function navegar(id) {
                     <span class="admin-nav-icon">{{ item.icon }}</span>
                     <span>{{ item.label }}</span>
 
-                    <span
-                        v-if="item.id === 'alertas'"
-                        class="admin-alert-dot"
-                    ></span>
+                    
                 </button>
             </nav>
 
@@ -78,7 +71,7 @@ function navegar(id) {
                     class="admin-logout"
                     @click="emit('logout')"
                 >
-                    ↪ Volver al login
+                    Volver al inicio
                 </button>
             </div>
         </aside>
@@ -94,6 +87,10 @@ function navegar(id) {
                 </div>
 
                 <div class="admin-profile">
+                <Notificaciones
+                    rol="administrador"
+                    @navigate="emit('navigate', $event)"
+                />
                     <button
                         type="button"
                         class="btn btn-outline-secondary btn-sm mobile-logout"
@@ -220,14 +217,6 @@ function navegar(id) {
     width: 20px;
     text-align: center;
     font-size: 18px;
-}
-
-.admin-alert-dot {
-    width: 7px;
-    height: 7px;
-    margin-left: auto;
-    border-radius: 50%;
-    background: #fb7185;
 }
 
 .admin-sidebar-footer {
@@ -407,6 +396,16 @@ function navegar(id) {
     .mobile-logout {
         display: inline-flex;
         flex-shrink: 0;
+    }
+}
+@media (max-width: 560px) {
+    .admin-topbar {
+        flex-wrap: wrap;
+    }
+
+    .admin-profile {
+        width: 100%;
+        justify-content: flex-end;
     }
 }
 </style>

@@ -8,6 +8,67 @@ const busqueda = ref('');
 const filtroEstado = ref('Todos');
 const filtroPrioridad = ref('Todas');
 
+const vistaSeleccionada = ref('activos');
+
+const estadosActivos = ['Pendiente', 'Recibida', 'En atención'];
+
+const vistas = [
+    { id: 'activos', label: 'Activos' },
+    { id: 'atendidos', label: 'Atendidos' },
+    { id: 'cerrados', label: 'Cerrados' },
+    { id: 'todos', label: 'Todos' },
+];
+
+function perteneceAVista(incidente, vista) {
+    if (vista === 'activos') {
+        return estadosActivos.includes(incidente.estado);
+    }
+
+    if (vista === 'atendidos') {
+        return incidente.estado === 'Atendida';
+    }
+
+    if (vista === 'cerrados') {
+        return incidente.estado === 'Cerrada';
+    }
+
+    return true;
+}
+
+const conteosVistas = computed(() =>
+    Object.fromEntries(
+        vistas.map((vista) => [
+            vista.id,
+            incidentes.value.filter(
+                (incidente) => perteneceAVista(incidente, vista.id)
+            ).length,
+        ])
+    )
+);
+
+const estadosDisponibles = computed(() => {
+    if (vistaSeleccionada.value === 'activos') {
+        return estadosActivos;
+    }
+
+    if (vistaSeleccionada.value === 'atendidos') {
+        return ['Atendida'];
+    }
+
+    if (vistaSeleccionada.value === 'cerrados') {
+        return ['Cerrada'];
+    }
+
+    return estados;
+});
+
+function cambiarVista(vista) {
+    vistaSeleccionada.value = vista;
+
+    // Evita conservar un estado incompatible con la nueva vista.
+    filtroEstado.value = 'Todos';
+}
+
 const incidentes = ref([
     {
         folio: 'SIG-2026-001',
@@ -102,23 +163,19 @@ const incidentesFiltrados = computed(() => {
             filtroPrioridad.value === 'Todas' ||
             incidente.prioridad === filtroPrioridad.value;
 
-        return coincideTexto && coincideEstado && coincidePrioridad;
-    });
+            const coincideVista = perteneceAVista(
+                incidente,
+                vistaSeleccionada.value
+            );
+
+            return coincideVista &&
+                coincideTexto &&
+                coincideEstado &&
+                coincidePrioridad;
+            });
 });
 
-const pendientes = computed(() =>
-    incidentes.value.filter(i => i.estado === 'Pendiente').length
-);
 
-const enAtencion = computed(() =>
-    incidentes.value.filter(i => i.estado === 'En atención').length
-);
-
-const finalizados = computed(() =>
-    incidentes.value.filter(i =>
-        ['Atendida', 'Cerrada'].includes(i.estado)
-    ).length
-);
 
 function limpiarFiltros() {
     busqueda.value = '';
@@ -139,46 +196,64 @@ function gestionarIncidente(incidente) {
                 <strong>Modo demostración:</strong>
                 los incidentes son ficticios. Los datos no se guardan
                 en una base de datos.
-            </span>
+            </span> 
         </div>
 
-        <section class="stats-grid">
-            <article class="stat-card">
-                <span>Total de incidentes</span>
-                <strong>{{ incidentes.length }}</strong>
-                <small>Registros de demostración</small>
-            </article>
+            <section class="stats-grid">
+        <article class="stat-card">
+            <span>Total de incidentes</span>
+            <strong>{{ incidentes.length }}</strong>
+            <small>Todos los registros</small>
+        </article>
 
-            <article class="stat-card">
-                <span>Pendientes</span>
-                <strong class="red">{{ pendientes }}</strong>
-                <small>Esperando atención</small>
-            </article>
+        <article class="stat-card">
+            <span>Activos</span>
+            <strong class="red">{{ conteosVistas.activos }}</strong>
+            <small>Requieren atención o seguimiento</small>
+        </article>
 
-            <article class="stat-card">
-                <span>En atención</span>
-                <strong class="blue">{{ enAtencion }}</strong>
-                <small>En proceso</small>
-            </article>
+        <article class="stat-card">
+            <span>Atendidos</span>
+            <strong class="blue">{{ conteosVistas.atendidos }}</strong>
+            <small>Pendientes de cierre administrativo</small>
+        </article>
 
-            <article class="stat-card">
-                <span>Atendidos o cerrados</span>
-                <strong class="green">{{ finalizados }}</strong>
-                <small>Seguimiento finalizado</small>
-            </article>
-        </section>
+        <article class="stat-card">
+            <span>Cerrados</span>
+            <strong class="green">{{ conteosVistas.cerrados }}</strong>
+            <small>Casos concluidos</small>
+        </article>
+    </section>
 
         <section class="incidents-panel">
             <header class="panel-header">
                 <div>
                     <h2>Registro de incidentes</h2>
-                    <p>Consulta los casos registrados y accede a su seguimiento.</p>
+                    <p>
+                        Gestiona las emergencias activas y consulta los casos atendidos
+                        o cerrados desde una misma pantalla.
+                    </p>
                 </div>
 
                 <span class="result-count">
                     {{ incidentesFiltrados.length }} resultados
                 </span>
             </header>
+            <div class="incident-views" role="group" aria-label="Vista de incidentes">
+                <button
+                    v-for="vista in vistas"
+                    :key="vista.id"
+                    type="button"
+                    class="incident-view-button"
+                    :class="{ selected: vistaSeleccionada === vista.id }"
+                    :aria-pressed="vistaSeleccionada === vista.id"
+                    @click="cambiarVista(vista.id)"
+                >
+                    {{ vista.label }}
+
+                    <span>{{ conteosVistas[vista.id] }}</span>
+                </button>
+            </div>
 
             <div class="filters">
                 <input
@@ -190,7 +265,7 @@ function gestionarIncidente(incidente) {
 
                 <select v-model="filtroEstado" aria-label="Filtrar por estado">
                     <option>Todos</option>
-                    <option v-for="estado in estados" :key="estado">
+                    <option v-for="estado in estadosDisponibles" :key="estado">
                         {{ estado }}
                     </option>
                 </select>
@@ -262,7 +337,7 @@ function gestionarIncidente(incidente) {
                                     class="detail-button"
                                     @click="gestionarIncidente(incidente)"
                                 >
-                                    Gestionar
+                                    {{ incidente.estado === 'Cerrada' ? 'Ver detalle' : 'Gestionar' }}
                                 </button>
                             </td>
                         </tr>
@@ -544,6 +619,65 @@ function gestionarIncidente(incidente) {
 
     .filters input {
         min-width: 100%;
+    }
+}
+.incident-views {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 22px 20px;
+}
+
+.incident-view-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 13px;
+    border: 1px solid #dfe6ef;
+    border-radius: 8px;
+    background: white;
+    color: #536277;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.incident-view-button > span {
+    min-width: 22px;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: #eef2f7;
+    text-align: center;
+    font-size: 10px;
+}
+
+.incident-view-button:hover {
+    background: #f4f7fb;
+}
+
+.incident-view-button.selected {
+    border-color: #2563eb;
+    background: #eef5ff;
+    color: #2454bd;
+}
+
+.incident-view-button.selected > span {
+    background: #dce8ff;
+    color: #2454bd;
+}
+
+.incident-view-button:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 3px;
+}
+
+@media (max-width: 650px) {
+    .incident-views {
+        padding: 0 15px 16px;
+    }
+
+    .incident-view-button {
+        flex: 1 1 calc(50% - 8px);
+        justify-content: space-between;
     }
 }
 </style>

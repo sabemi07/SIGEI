@@ -3,7 +3,7 @@ import { ref } from 'vue';
 
 const correo = ref('');
 const password = ref('');
-const rolDemo = ref('usuario');
+const rolDemo = ref('responsable');
 
 const emit = defineEmits(['iniciar']);
 
@@ -24,7 +24,7 @@ function iniciarSesionDemo() {
             </p>
 
             <h2>Iniciar sesión</h2>
-            <p>Ingresa tus datos para continuar.</p>
+            <p>Acceso para responsables y administradores.</p>
 
             <form @submit.prevent="iniciarSesionDemo">
                 <label for="correo">Correo institucional</label>
@@ -58,7 +58,6 @@ function iniciarSesionDemo() {
                         class="form-select"
                         aria-describedby="rol-demo-ayuda"
                     >
-                        <option value="usuario">Usuario</option>
                         <option value="responsable">Responsable</option>
                         <option value="administrador">Administrador</option>
                     </select>
