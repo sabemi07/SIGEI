@@ -1,5 +1,4 @@
 <script setup>
-import Notificaciones from '../Notificaciones.vue';
 defineProps({
     activeView: {
         type: String,
@@ -87,10 +86,7 @@ function navegar(id) {
                 </div>
 
                 <div class="admin-profile">
-                <Notificaciones
-                    rol="administrador"
-                    @navigate="emit('navigate', $event)"
-                />
+                <slot name="notificaciones" />
                     <button
                         type="button"
                         class="btn btn-outline-secondary btn-sm mobile-logout"

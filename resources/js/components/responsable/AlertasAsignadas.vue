@@ -1,71 +1,60 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
-const responsableDemoId = 'responsable-01';
+const props = defineProps({
+    incidentes: {
+        type: Array,
+        default: () => [],
+    },
+    usuario: {
+        type: Object,
+        default: null,
+    },
+    solicitudDetalle: {
+        type: Object,
+        default: null,
+    },
+});
+
+const emit = defineEmits(['guardar']);
 
 const busqueda = ref('');
 const filtroEstado = ref('Todos');
 const filtroPrioridad = ref('Todas');
-const alertaSeleccionada = ref(null);
-const estadoSeguimiento = ref('Pendiente');
+
+const folioSeleccionado = ref(null);
+const estadoSeguimiento = ref('Recibida');
 const observacion = ref('');
 const mensajeSeguimiento = ref('');
 const errorSeguimiento = ref('');
-const seguimientos = ref({});
 
-const alertas = ref([
-    {
-        folio: 'SIG-2026-001',
-        responsableId: 'responsable-01',
-        tipo: 'Emergencia médica',
-        ubicacion: 'Edificio A · Planta baja',
-        fecha: '20/10/2026',
-        hora: '10:42',
-        descripcion: 'Persona que requiere asistencia médica.',
-        prioridad: 'Alta',
-        estado: 'Pendiente',
-    },
-    {
-        folio: 'SIG-2026-002',
-        responsableId: 'responsable-01',
-        tipo: 'Incidente de seguridad',
-        ubicacion: 'Acceso principal',
-        fecha: '20/10/2026',
-        hora: '10:28',
-        descripcion: 'Se solicita revisar una situación en el acceso.',
-        prioridad: 'Media',
-        estado: 'En atención',
-    },
-    {
-        folio: 'SIG-2026-003',
-        responsableId: 'responsable-01',
-        tipo: 'Accidente',
-        ubicacion: 'Laboratorio 2',
-        fecha: '20/10/2026',
-        hora: '09:55',
-        descripcion: 'Se reporta un accidente dentro del laboratorio.',
-        prioridad: 'Alta',
-        estado: 'Recibida',
-    },
-    {
-        folio: 'SIG-2026-004',
-        responsableId: 'responsable-02',
-        tipo: 'Situación de riesgo',
-        ubicacion: 'Edificio B · Segundo piso',
-        fecha: '20/10/2026',
-        hora: '09:30',
-        descripcion: 'Se solicita una revisión del área.',
-        prioridad: 'Media',
-        estado: 'Pendiente',
-    },
-]);
-
-const asignadas = computed(() =>
-    alertas.value.filter((alerta) =>
-        alerta.responsableId === responsableDemoId &&
-        ['Pendiente', 'Recibida', 'En atención'].includes(alerta.estado)
-    )
+const cuentaHabilitada = computed(() =>
+    props.usuario?.activo &&
+    props.usuario?.rol === 'Responsable'
 );
+
+const alertaSeleccionada = computed({
+    get() {
+        if (!cuentaHabilitada.value) return null;
+
+        return props.incidentes.find(item =>
+            item.folio === folioSeleccionado.value &&
+            item.responsableId === props.usuario.id
+        ) ?? null;
+    },
+    set(alerta) {
+        folioSeleccionado.value = alerta?.folio ?? null;
+    },
+});
+
+const asignadas = computed(() => {
+    if (!cuentaHabilitada.value) return [];
+
+    return props.incidentes.filter(item =>
+        item.responsableId === props.usuario.id &&
+        ['Pendiente', 'Recibida', 'En atención'].includes(item.estado)
+    );
+});
 
 const indicadores = computed(() => [
     {
@@ -78,7 +67,7 @@ const indicadores = computed(() => [
     {
         titulo: 'Pendientes',
         total: asignadas.value.filter(
-            (alerta) => alerta.estado === 'Pendiente'
+            item => item.estado === 'Pendiente'
         ).length,
         descripcion: 'Pendientes de recepción',
         simbolo: '◷',
@@ -87,7 +76,7 @@ const indicadores = computed(() => [
     {
         titulo: 'En atención',
         total: asignadas.value.filter(
-            (alerta) => alerta.estado === 'En atención'
+            item => item.estado === 'En atención'
         ).length,
         descripcion: 'Con atención en proceso',
         simbolo: '↗',
@@ -98,12 +87,12 @@ const indicadores = computed(() => [
 const alertasFiltradas = computed(() => {
     const texto = busqueda.value.trim().toLowerCase();
 
-    return asignadas.value.filter((alerta) => {
+    return asignadas.value.filter(alerta => {
         const coincideTexto = [
             alerta.folio,
             alerta.tipo,
             alerta.ubicacion,
-        ].some((valor) => valor.toLowerCase().includes(texto));
+        ].some(valor => valor.toLowerCase().includes(texto));
 
         return coincideTexto &&
             (filtroEstado.value === 'Todos' ||
@@ -113,12 +102,25 @@ const alertasFiltradas = computed(() => {
     });
 });
 
+const estadosDisponibles = computed(() => {
+    const orden = ['Recibida', 'En atención', 'Atendida'];
+    const posicion = orden.indexOf(alertaSeleccionada.value?.estado);
+
+    return posicion >= 0 && posicion < 2
+        ? orden.slice(posicion, posicion + 2)
+        : [];
+});
+
+const historialSeleccionado = computed(
+    () => alertaSeleccionada.value?.seguimientos ?? []
+);
+
 function clasePrioridad(prioridad) {
     return {
         Alta: 'etiqueta-roja',
         Media: 'etiqueta-ambar',
         Baja: 'etiqueta-verde',
-    }[prioridad];
+    }[prioridad] ?? 'etiqueta-neutral';
 }
 
 function claseEstado(estado) {
@@ -126,7 +128,9 @@ function claseEstado(estado) {
         Pendiente: 'etiqueta-roja',
         Recibida: 'etiqueta-ambar',
         'En atención': 'etiqueta-azul',
-    }[estado];
+        Atendida: 'etiqueta-verde',
+        Cerrada: 'etiqueta-verde',
+    }[estado] ?? 'etiqueta-neutral';
 }
 
 function limpiarFiltros() {
@@ -134,22 +138,6 @@ function limpiarFiltros() {
     filtroEstado.value = 'Todos';
     filtroPrioridad.value = 'Todas';
 }
-const historialSeleccionado = computed(() => {
-    if (!alertaSeleccionada.value) return [];
-
-    const alerta = alertaSeleccionada.value;
-
-    return [
-        {
-            id: 'asignacion',
-            estado: 'Asignación de emergencia',
-            fecha: `${alerta.fecha} · ${alerta.hora}`,
-            autor: 'Sistema de demostración',
-            observacion: 'Caso asignado al responsable de demostración.',
-        },
-        ...(seguimientos.value[alerta.folio] || []),
-    ];
-});
 
 function abrirDetalle(alerta) {
     alertaSeleccionada.value = alerta;
@@ -159,72 +147,88 @@ function abrirDetalle(alerta) {
     errorSeguimiento.value = '';
 }
 
-function registrarSeguimiento() {
+function enviarCambio(estado, texto) {
     const alerta = alertaSeleccionada.value;
 
-    if (!alerta || alerta.estado === 'Atendida') return;
+    if (!alerta) return;
 
     errorSeguimiento.value = '';
     mensajeSeguimiento.value = '';
 
-    const texto = observacion.value.trim();
+    emit(
+        'guardar',
+        {
+            folio: alerta.folio,
+            estado,
+            observacion: texto,
+        },
+        resultado => {
+            if (!resultado?.ok) {
+                errorSeguimiento.value =
+                    resultado?.error ?? 'No se pudo guardar el seguimiento.';
+                return;
+            }
 
-    if (!texto) {
-        errorSeguimiento.value =
-            'Escribe una observación para registrar el seguimiento.';
-        return;
-    }
+            estadoSeguimiento.value = alerta.estado;
+            observacion.value = '';
 
-    const estadosPermitidos = ['Pendiente', 'Recibida', 'En atención', 'Atendida'];
+            mensajeSeguimiento.value = estado === 'Atendida'
+                ? 'Atención registrada. El caso queda pendiente de cierre por el Administrador.'
+                : estado === 'Recibida'
+                  ? 'Recepción confirmada en esta demostración.'
+                  : 'Seguimiento registrado y compartido con el Administrador.';
+        }
+    );
+}
 
-    if (!estadosPermitidos.includes(estadoSeguimiento.value)) {
+function confirmarRecepcion() {
+    if (alertaSeleccionada.value?.estado !== 'Pendiente') return;
+
+    enviarCambio(
+        'Recibida',
+        'El Responsable confirmó la recepción del incidente.'
+    );
+}
+
+function registrarSeguimiento() {
+    if (!estadosDisponibles.value.includes(estadoSeguimiento.value)) {
         errorSeguimiento.value = 'Selecciona un estado válido.';
         return;
     }
 
-    // Evita retroceder de estado en esta demostración.
-    if (
-        estadosPermitidos.indexOf(estadoSeguimiento.value) <
-        estadosPermitidos.indexOf(alerta.estado)
-    ) {
-        errorSeguimiento.value =
-            'Selecciona el estado actual o uno posterior.';
+    const texto = observacion.value.trim();
+
+    if (!texto) {
+        errorSeguimiento.value = 'Escribe una observación para registrar el seguimiento.';
         return;
     }
 
-    const registros = seguimientos.value[alerta.folio] || [];
-
-    const fecha = new Intl.DateTimeFormat('es-MX', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    }).format(new Date());
-
-    seguimientos.value[alerta.folio] = [
-        ...registros,
-        {
-            id: `seguimiento-${registros.length + 1}`,
-            estado: estadoSeguimiento.value,
-            fecha,
-            autor: 'Responsable de demostración',
-            observacion: texto,
-        },
-    ];
-
-    alerta.estado = estadoSeguimiento.value;
-    observacion.value = '';
-
-    mensajeSeguimiento.value = alerta.estado === 'Atendida'
-        ? 'Atención registrada en la demostración. El caso queda pendiente de cierre por el Administrador.'
-        : 'Seguimiento registrado en esta vista de demostración.';
+    enviarCambio(estadoSeguimiento.value, texto);
 }
+watch(
+    () => props.solicitudDetalle,
+    solicitud => {
+        if (!solicitud || !cuentaHabilitada.value) return;
+
+        const incidente = props.incidentes.find(item =>
+            item.folio === solicitud.folio &&
+            item.responsableId === props.usuario.id
+        );
+
+        if (incidente) abrirDetalle(incidente);
+    },
+    { immediate: true }
+);
 </script>
 
 <template>
     <div class="asignadas-page">
         <div class="demo-notice">
             <strong>Modo demostración:</strong>
-            datos ficticios del responsable de ejemplo.
-            Esta vista todavía no está conectada con el administrador.
+            estás consultando las asignaciones de
+            {{ usuario?.nombre || 'tu cuenta' }}.
+            El seguimiento se comparte con el Administrador durante esta sesión.
+            Los cambios se pierden al recargar.
         </div>
 
         <section class="summary-grid" aria-label="Resumen de alertas asignadas">
@@ -287,6 +291,7 @@ function registrarSeguimiento() {
                     aria-label="Filtrar por prioridad"
                 >
                     <option value="Todas">Todas las prioridades</option>
+                    <option>Por evaluar</option>
                     <option>Alta</option>
                     <option>Media</option>
                     <option>Baja</option>
@@ -434,7 +439,7 @@ function registrarSeguimiento() {
 
                         <div>
                             <dt>Asignado a</dt>
-                            <dd>Responsable de demostración</dd>
+                            <dd>{{ usuario?.nombre }}</dd>
                         </div>
                     </dl>
 
@@ -458,12 +463,28 @@ function registrarSeguimiento() {
                         </div>
 
                         <div
-                            v-if="alertaSeleccionada.estado === 'Atendida'"
+                            v-if="['Atendida', 'Cerrada'].includes(alertaSeleccionada.estado)"
                             class="alert alert-info small mb-0"
                         >
-                            La emergencia fue marcada como atendida y salió de
-                            la lista de alertas activas. El cierre corresponde
-                            al Administrador.
+                            Este caso ya no admite seguimiento desde el panel del Responsable.
+                            El cierre corresponde al Administrador.
+                        </div>
+
+                        <div
+                            v-else-if="alertaSeleccionada.estado === 'Pendiente'"
+                            class="d-grid gap-2"
+                        >
+                            <p class="small text-secondary mb-0">
+                                Confirma que recibiste el incidente antes de registrar la atención.
+                            </p>
+
+                            <button
+                                type="button"
+                                class="btn btn-primary btn-sm"
+                                @click="confirmarRecepcion"
+                            >
+                                Confirmar recepción
+                            </button>
                         </div>
 
                         <form
@@ -482,19 +503,12 @@ function registrarSeguimiento() {
                                     class="form-select"
                                 >
                                     <option
-                                        :disabled="alertaSeleccionada.estado !== 'Pendiente'"
+                                        v-for="estado in estadosDisponibles"
+                                        :key="estado"
+                                        :value="estado"
                                     >
-                                        Pendiente
+                                        {{ estado }}
                                     </option>
-
-                                    <option
-                                        :disabled="alertaSeleccionada.estado === 'En atención'"
-                                    >
-                                        Recibida
-                                    </option>
-
-                                    <option>En atención</option>
-                                    <option>Atendida</option>
                                 </select>
                             </div>
 
@@ -522,17 +536,9 @@ function registrarSeguimiento() {
                                 </small>
                             </div>
 
-                            <div
-                                v-if="errorSeguimiento"
-                                class="alert alert-danger small mb-0"
-                                role="alert"
-                            >
-                                {{ errorSeguimiento }}
-                            </div>
-
                             <div class="seguimiento-actions">
                                 <small>
-                                    Simulación local, sin guardar en una base de datos.
+                                    Seguimiento compartido durante esta sesión de demostración.
                                 </small>
 
                                 <button type="submit" class="btn btn-primary btn-sm">
@@ -540,6 +546,14 @@ function registrarSeguimiento() {
                                 </button>
                             </div>
                         </form>
+
+                        <div
+                            v-if="errorSeguimiento"
+                            class="alert alert-danger small mb-0"
+                            role="alert"
+                        >
+                            {{ errorSeguimiento }}
+                        </div>
                     </section>
 
                     <section
@@ -563,6 +577,12 @@ function registrarSeguimiento() {
                                 <p>{{ registro.observacion }}</p>
                             </li>
                         </ol>
+                        <p
+                            v-if="historialSeleccionado.length === 0"
+                            class="small text-secondary mb-0"
+                        >
+                            Todavía no hay seguimientos registrados.
+                        </p>
                     </section>
                 </div>
             </template>
@@ -988,5 +1008,9 @@ function registrarSeguimiento() {
     line-height: 1.7;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+}
+.etiqueta-neutral {
+    background: #eef2f7;
+    color: #64748b;
 }
 </style>

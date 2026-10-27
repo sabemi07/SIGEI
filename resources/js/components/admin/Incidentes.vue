@@ -1,6 +1,14 @@
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, toRef } from 'vue';
+const props = defineProps({
+    incidentes: {
+        type: Array,
+        default: () => [],
+    },
+});
+
+const incidentes = toRef(props, 'incidentes');
 
 const emit = defineEmits(['gestionar']);
 
@@ -69,73 +77,7 @@ function cambiarVista(vista) {
     filtroEstado.value = 'Todos';
 }
 
-const incidentes = ref([
-    {
-        folio: 'SIG-2026-001',
-        tipo: 'Emergencia médica',
-        ubicacion: 'Edificio A · Planta baja',
-        fecha: '19/10/2026',
-        hora: '10:42',
-        reportante: 'Usuario de demostración',
-        descripcion: 'Persona que requiere asistencia médica.',
-        prioridad: 'Alta',
-        estado: 'Pendiente',
-        responsable: 'Sin asignar',
-        observaciones: '',
-    },
-    {
-        folio: 'SIG-2026-002',
-        tipo: 'Incidente de seguridad',
-        ubicacion: 'Acceso principal',
-        fecha: '19/10/2026',
-        hora: '10:28',
-        reportante: 'Usuario de demostración',
-        descripcion: 'Se solicita revisar una situación en el acceso principal.',
-        prioridad: 'Media',
-        estado: 'En atención',
-        responsable: 'Personal de seguridad',
-        observaciones: 'Personal enviado a revisar la situación.',
-    },
-    {
-        folio: 'SIG-2026-003',
-        tipo: 'Accidente',
-        ubicacion: 'Laboratorio 2',
-        fecha: '19/10/2026',
-        hora: '09:55',
-        reportante: 'Usuario de demostración',
-        descripcion: 'Se reporta un accidente dentro del laboratorio.',
-        prioridad: 'Alta',
-        estado: 'Pendiente',
-        responsable: 'Sin asignar',
-        observaciones: '',
-    },
-    {
-        folio: 'SIG-2026-004',
-        tipo: 'Situación de riesgo',
-        ubicacion: 'Edificio B · Segundo piso',
-        fecha: '19/10/2026',
-        hora: '09:30',
-        reportante: 'Usuario de demostración',
-        descripcion: 'Situación revisada por el personal responsable.',
-        prioridad: 'Baja',
-        estado: 'Atendida',
-        responsable: 'Personal administrativo',
-        observaciones: 'Revisión completada.',
-    },
-    {
-        folio: 'SIG-2026-005',
-        tipo: 'Emergencia médica',
-        ubicacion: 'Cancha deportiva',
-        fecha: '19/10/2026',
-        hora: '09:12',
-        reportante: 'Usuario de demostración',
-        descripcion: 'Se solicita apoyo en el área deportiva.',
-        prioridad: 'Media',
-        estado: 'Cerrada',
-        responsable: 'Personal médico',
-        observaciones: 'Caso cerrado en la demostración.',
-    },
-]);
+
 
 const estados = [
     'Pendiente',
@@ -275,6 +217,7 @@ function gestionarIncidente(incidente) {
                     aria-label="Filtrar por prioridad"
                 >
                     <option>Todas</option>
+                    <option>Por Evaluar</option>
                     <option>Alta</option>
                     <option>Media</option>
                     <option>Baja</option>
@@ -317,7 +260,7 @@ function gestionarIncidente(incidente) {
                             <td>
                                 <span
                                     class="pill"
-                                    :class="'priority-' + incidente.prioridad.toLowerCase()"
+                                    :class="'priority-' + incidente.prioridad.toLowerCase().replaceAll(' ', '-')"
                                 >
                                     {{ incidente.prioridad }}
                                 </span>
@@ -679,5 +622,9 @@ function gestionarIncidente(incidente) {
         flex: 1 1 calc(50% - 8px);
         justify-content: space-between;
     }
+}
+.priority-por-evaluar {
+    background: #eef2f7;
+    color: #64748b;
 }
 </style>

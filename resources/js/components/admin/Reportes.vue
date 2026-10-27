@@ -1,58 +1,24 @@
 <script setup>
 import { computed, ref } from 'vue';
 
-const incidentes = [
-    {
-        folio: 'SIG-2026-001',
-        fecha: '2026-10-19',
-        hora: '10:42',
-        tipo: 'Emergencia médica',
-        ubicacion: 'Edificio A · Planta baja',
-        prioridad: 'Alta',
-        estado: 'Pendiente',
-        responsable: 'Sin asignar',
+const props = defineProps({
+    incidentes: {
+        type: Array,
+        default: () => [],
     },
-    {
-        folio: 'SIG-2026-002',
-        fecha: '2026-10-19',
-        hora: '10:28',
-        tipo: 'Incidente de seguridad',
-        ubicacion: 'Acceso principal',
-        prioridad: 'Media',
-        estado: 'En atención',
-        responsable: 'Personal de seguridad',
-    },
-    {
-        folio: 'SIG-2026-003',
-        fecha: '2026-10-19',
-        hora: '09:55',
-        tipo: 'Accidente',
-        ubicacion: 'Laboratorio 2',
-        prioridad: 'Alta',
-        estado: 'Pendiente',
-        responsable: 'Sin asignar',
-    },
-    {
-        folio: 'SIG-2026-004',
-        fecha: '2026-10-19',
-        hora: '09:30',
-        tipo: 'Situación de riesgo',
-        ubicacion: 'Edificio B · Segundo piso',
-        prioridad: 'Baja',
-        estado: 'Atendida',
-        responsable: 'Personal administrativo',
-    },
-    {
-        folio: 'SIG-2026-005',
-        fecha: '2026-10-19',
-        hora: '09:12',
-        tipo: 'Emergencia médica',
-        ubicacion: 'Cancha deportiva',
-        prioridad: 'Media',
-        estado: 'Cerrada',
-        responsable: 'Personal médico',
-    },
-];
+});
+
+const incidentes = computed(() =>
+    props.incidentes.map(item => {
+        // Convierte DD/MM/AAAA a AAAA-MM-DD para los filtros de fecha.
+        const [dia, mes, anio] = item.fecha.split('/');
+
+        return {
+            ...item,
+            fecha: `${anio}-${mes}-${dia}`,
+        };
+    })
+);
 
 const fechaInicio = ref('');
 const fechaFin = ref('');
@@ -68,9 +34,11 @@ const estados = [
     'Cerrada',
 ];
 
-const prioridades = ['Alta', 'Media', 'Baja'];
+const prioridades = ['Por evaluar', 'Alta', 'Media', 'Baja'];
 
-const tipos = [...new Set(incidentes.map(item => item.tipo))];
+const tipos = computed(() =>
+    [...new Set(incidentes.value.map(item => item.tipo))]
+);
 
 const errorFechas = computed(() => {
     if (
@@ -87,7 +55,7 @@ const errorFechas = computed(() => {
 const resultados = computed(() => {
     if (errorFechas.value) return [];
 
-    return incidentes.filter(item =>
+    return incidentes.value.filter(item =>
         (!fechaInicio.value || item.fecha >= fechaInicio.value) &&
         (!fechaFin.value || item.fecha <= fechaFin.value) &&
         (!filtroTipo.value || item.tipo === filtroTipo.value) &&
@@ -145,7 +113,7 @@ function agruparPor(campo, categorias) {
     });
 }
 
-const porTipo = computed(() => agruparPor('tipo', tipos));
+const porTipo = computed(() => agruparPor('tipo', tipos.value));
 const porEstado = computed(() => agruparPor('estado', estados));
 
 function limpiarFiltros() {
@@ -225,8 +193,9 @@ function exportarCsv() {
     <div class="reports-page">
         <div class="demo-notice">
             <strong>Modo demostración:</strong>
-            este reporte utiliza registros ficticios independientes
-            de los cambios realizados en Incidentes.
+            este reporte utiliza los mismos registros del módulo Incidentes.
+            Los cambios se conservan durante la sesión y se pierden
+            al recargar la aplicación.
         </div>
 
         <section class="panel">
@@ -816,5 +785,24 @@ select:focus-visible {
         flex-wrap: wrap;
         gap: 5px;
     }
+}
+.pill {
+    background: #eef2f7;
+    color: #64748b;
+}
+
+.pill.priority-high {
+    background: #fff0f0;
+    color: #cf3434;
+}
+
+.pill.priority-medium {
+    background: #fff5df;
+    color: #a76c08;
+}
+
+.pill.priority-low {
+    background: #e8f8ef;
+    color: #198754;
 }
 </style>

@@ -1,5 +1,5 @@
 <script setup>
-import Notificaciones from '../Notificaciones.vue';
+
 defineProps({
     activeView: {
         type: String,
@@ -102,10 +102,7 @@ const titulos = {
                 </div>
 
                 <div class="responsable-profile">
-                <Notificaciones
-                    rol="responsable"
-                    @navigate="emit('navigate', $event)"
-                />
+                <slot name="notificaciones" />
                     <button
                         type="button"
                         class="btn btn-outline-secondary btn-sm mobile-logout"

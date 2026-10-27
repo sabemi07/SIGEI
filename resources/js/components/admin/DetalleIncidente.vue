@@ -7,6 +7,10 @@ const props = defineProps({
         type: Object,
         default: null,
     },
+    usuarios: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const emit = defineEmits(['volver', 'guardar']);
@@ -14,6 +18,26 @@ const emit = defineEmits(['volver', 'guardar']);
 const incidenteSeleccionado = ref(null);
 const mensajeGuardado = ref(false);
 const error = ref('');
+
+const responsablesActivos = computed(() =>
+    props.usuarios.filter(
+        usuario => usuario.rol === 'Responsable' && usuario.activo
+    )
+);
+
+const prioridades = ['Por evaluar', 'Alta', 'Media', 'Baja'];
+
+function cambiarResponsable() {
+    const seleccionado = responsablesActivos.value.find(
+        usuario =>
+            usuario.id === incidenteSeleccionado.value.responsableId
+    );
+
+    incidenteSeleccionado.value.responsable =
+        seleccionado?.nombre ?? 'Sin asignar';
+
+    marcarCambio();
+}
 
 const estados = [
     'Pendiente',
@@ -29,7 +53,8 @@ watch(
         incidenteSeleccionado.value = nuevoIncidente
             ? {
                 ...nuevoIncidente,
-                responsable: nuevoIncidente.responsable ?? 'Sin asignar',
+                responsableId: nuevoIncidente.responsableId ?? '',
+                prioridad: nuevoIncidente.prioridad ?? 'Por evaluar',
                 observaciones: nuevoIncidente.observaciones ?? '',
             }
             : null;
@@ -72,8 +97,19 @@ function guardarSeguimiento() {
         return;
     }
 
-    const responsable = incidente.responsable.trim();
-    const observaciones = incidente.observaciones.trim();
+    if (!prioridades.includes(incidente.prioridad)) {
+        error.value = 'Selecciona una prioridad válida.';
+        return;
+    }
+
+    const responsable = responsablesActivos.value.find(
+        usuario => usuario.id === incidente.responsableId
+    );
+
+    if (incidente.responsableId && !responsable) {
+        error.value = 'Selecciona una cuenta de Responsable activa.';
+        return;
+    }
 
     const requiereResponsable = [
         'En atención',
@@ -81,13 +117,20 @@ function guardarSeguimiento() {
         'Cerrada',
     ].includes(incidente.estado);
 
-    if (
-        requiereResponsable &&
-        (!responsable || responsable.toLowerCase() === 'sin asignar')
-    ) {
-        error.value = 'Asigna un responsable antes de guardar este estado.';
+    if (requiereResponsable && !responsable) {
+        error.value = 'Asigna una cuenta de Responsable antes de guardar este estado.';
         return;
     }
+
+    if (
+        requiereResponsable &&
+        incidente.prioridad === 'Por evaluar'
+    ) {
+        error.value = 'Define la prioridad antes de continuar con la atención.';
+        return;
+    }
+
+    const observaciones = incidente.observaciones.trim();
 
     if (
         ['Atendida', 'Cerrada'].includes(incidente.estado) &&
@@ -99,13 +142,18 @@ function guardarSeguimiento() {
 
     const actualizado = {
         ...incidente,
-        responsable: responsable || 'Sin asignar',
+        responsableId: responsable?.id ?? null,
+        responsable: responsable?.nombre ?? 'Sin asignar',
         observaciones,
     };
 
     emit('guardar', actualizado);
 
-    incidenteSeleccionado.value = { ...actualizado };
+    incidenteSeleccionado.value = {
+        ...actualizado,
+        responsableId: actualizado.responsableId ?? '',
+    };
+
     mensajeGuardado.value = true;
 }
 
@@ -196,15 +244,66 @@ function cerrarDetalle() {
 
                     <div class="form-field">
                         <label for="responsable">Responsable de atención</label>
-                        <input
+
+                        <select
                             id="responsable"
-                            v-model="incidenteSeleccionado.responsable"
-                            type="text"
-                            maxlength="150"
+                            v-model="incidenteSeleccionado.responsableId"
                             :disabled="soloLectura"
-                            placeholder="Nombre o área responsable"
-                            @input="marcarCambio"
-                        />
+                            @change="cambiarResponsable"
+                        >
+                            <option value="">
+                                {{
+                                    incidenteSeleccionado.responsable !== 'Sin asignar'
+                                        ? 'Actual: ' + incidenteSeleccionado.responsable + ' · Selecciona una cuenta'
+                                        : 'Sin asignar'
+                                }}
+                            </option>
+
+                            <option
+                                v-if="
+                                    incidenteSeleccionado.responsableId &&
+                                    !responsablesActivos.some(
+                                        usuario =>
+                                            usuario.id === incidenteSeleccionado.responsableId
+                                    )
+                                "
+                                :value="incidenteSeleccionado.responsableId"
+                                disabled
+                            >
+                                {{ incidenteSeleccionado.responsable }} · No disponible
+                            </option>
+
+                            <option
+                                v-for="usuario in responsablesActivos"
+                                :key="usuario.id"
+                                :value="usuario.id"
+                            >
+                                {{ usuario.nombre }} · {{ usuario.area }}
+                            </option>
+                        </select>
+
+                        <small v-if="!responsablesActivos.length">
+                            Agrega o activa una cuenta de Responsable desde Usuarios.
+                        </small>
+                    </div>
+
+                    <div class="form-field">
+                        <label for="prioridad-incidente">Prioridad del incidente</label>
+
+                        <select
+                            id="prioridad-incidente"
+                            v-model="incidenteSeleccionado.prioridad"
+                            :disabled="soloLectura"
+                            @change="marcarCambio"
+                        >
+                            <option
+                                v-for="prioridad in prioridades"
+                                :key="prioridad"
+                                :value="prioridad"
+                            >
+                                {{ prioridad }}
+                            </option>
+                        </select>
                     </div>
 
                     <div class="form-field">

@@ -1,104 +1,73 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+
+const props = defineProps({
+    incidentes: {
+        type: Array,
+        default: () => [],
+    },
+    usuario: {
+        type: Object,
+        default: null,
+    },
+    solicitudDetalle: {
+        type: Object,
+        default: null,
+    },
+});
 
 const busqueda = ref('');
 const filtroEstado = ref('Todos');
-const reporteSeleccionado = ref(null);
-
-// Datos ficticios de reportes realizados por el responsable de ejemplo.
-const reportes = [
-    {
-        folio: 'SIG-2026-006',
-        tipo: 'Situación de riesgo',
-        ubicacion: 'Edificio B · Pasillo del primer piso',
-        fecha: '20/10/2026',
-        hora: '11:15',
-        estado: 'Pendiente',
-        descripcion: 'Se observa un área con piso mojado sin señalización.',
-        responsable: 'Pendiente de asignación',
-        seguimiento: [
-            {
-                titulo: 'Reporte enviado',
-                fecha: '20/10/2026 · 11:15',
-                descripcion: 'La emergencia fue registrada para su revisión.',
-            },
-        ],
-    },
-    {
-        folio: 'SIG-2026-007',
-        tipo: 'Emergencia médica',
-        ubicacion: 'Biblioteca · Planta baja',
-        fecha: '20/10/2026',
-        hora: '09:40',
-        estado: 'En atención',
-        descripcion: 'Una persona solicita asistencia por malestar.',
-        responsable: 'Servicios médicos',
-        seguimiento: [
-            {
-                titulo: 'Reporte enviado',
-                fecha: '20/10/2026 · 09:40',
-                descripcion: 'La emergencia fue registrada para su revisión.',
-            },
-            {
-                titulo: 'En atención',
-                fecha: '20/10/2026 · 09:45',
-                descripcion: 'El personal responsable está atendiendo el caso.',
-            },
-        ],
-    },
-    {
-        folio: 'SIG-2026-008',
-        tipo: 'Situación de riesgo',
-        ubicacion: 'Estacionamiento · Acceso peatonal',
-        fecha: '19/10/2026',
-        hora: '13:20',
-        estado: 'Cerrada',
-        descripcion: 'Un objeto obstruye parcialmente el acceso peatonal.',
-        responsable: 'Protección civil',
-        seguimiento: [
-            {
-                titulo: 'Reporte enviado',
-                fecha: '19/10/2026 · 13:20',
-                descripcion: 'La emergencia fue registrada para su revisión.',
-            },
-            {
-                titulo: 'En atención',
-                fecha: '19/10/2026 · 13:25',
-                descripcion: 'El personal responsable inició la revisión.',
-            },
-            {
-                titulo: 'Atendida',
-                fecha: '19/10/2026 · 13:35',
-                descripcion: 'Se informó que la situación fue atendida.',
-            },
-            {
-                titulo: 'Cerrada',
-                fecha: '19/10/2026 · 13:45',
-                descripcion: 'El Administrador dio por concluido el caso.',
-            },
-        ],
-    },
-];
+const folioSeleccionado = ref(null);
 
 const estadosActivos = ['Pendiente', 'Recibida', 'En atención'];
+
+const descripcionesPublicas = {
+    Pendiente: 'El reporte está pendiente de recepción.',
+    Recibida: 'Se registró la recepción del incidente.',
+    'En atención': 'El personal asignado está atendiendo el incidente.',
+    Atendida: 'La atención fue registrada. El caso queda pendiente de cierre.',
+    Cerrada: 'El Administrador dio por concluido el caso.',
+};
+
+const reportes = computed(() => {
+    const usuario = props.usuario;
+
+    if (!usuario?.activo) return [];
+
+    return props.incidentes.filter(
+        incidente => incidente.reportanteId === usuario.id
+    );
+});
+
+const reporteSeleccionado = computed({
+    get() {
+        return reportes.value.find(
+            reporte => reporte.folio === folioSeleccionado.value
+        ) ?? null;
+    },
+    set(reporte) {
+        folioSeleccionado.value = reporte?.folio ?? null;
+    },
+});
 
 const indicadores = computed(() => [
     {
         titulo: 'Mis reportes',
-        total: reportes.length,
+        total: reportes.value.length,
         descripcion: 'Emergencias que has reportado',
     },
     {
         titulo: 'En seguimiento',
-        total: reportes.filter(
-            (reporte) => estadosActivos.includes(reporte.estado)
+        total: reportes.value.filter(
+            reporte => estadosActivos.includes(reporte.estado)
         ).length,
         descripcion: 'Pendientes, recibidas o en atención',
     },
     {
         titulo: 'Finalizados',
-        total: reportes.filter(
-            (reporte) => ['Atendida', 'Cerrada'].includes(reporte.estado)
+        total: reportes.value.filter(
+            reporte => ['Atendida', 'Cerrada'].includes(reporte.estado)
         ).length,
         descripcion: 'Atendidos o cerrados',
     },
@@ -107,17 +76,40 @@ const indicadores = computed(() => [
 const reportesFiltrados = computed(() => {
     const texto = busqueda.value.trim().toLowerCase();
 
-    return reportes.filter((reporte) => {
+    return reportes.value.filter(reporte => {
         const coincideTexto = [
             reporte.folio,
             reporte.tipo,
             reporte.ubicacion,
-        ].some((valor) => valor.toLowerCase().includes(texto));
+        ].some(valor => valor.toLowerCase().includes(texto));
 
         return coincideTexto &&
             (filtroEstado.value === 'Todos' ||
                 reporte.estado === filtroEstado.value);
     });
+});
+
+const avancesSeleccionados = computed(() => {
+    const reporte = reporteSeleccionado.value;
+
+    if (!reporte) return [];
+
+    return [
+        {
+            id: 'registro',
+            titulo: 'Reporte registrado',
+            fecha: `${reporte.fecha} · ${reporte.hora}`,
+            descripcion: 'La emergencia fue registrada para su revisión.',
+        },
+        ...(reporte.seguimientos ?? []).map((registro, indice) => ({
+            id: registro.id ?? `avance-${indice}`,
+            titulo: registro.estado,
+            fecha: registro.fecha,
+            descripcion:
+                descripcionesPublicas[registro.estado] ??
+                'Se registró un avance en la atención del incidente.',
+        })),
+    ];
 });
 
 function claseEstado(estado) {
@@ -134,14 +126,29 @@ function limpiarFiltros() {
     busqueda.value = '';
     filtroEstado.value = 'Todos';
 }
+watch(
+    () => props.solicitudDetalle,
+    solicitud => {
+        if (!solicitud) return;
+
+        const reporte = reportes.value.find(
+            item => item.folio === solicitud.folio
+        );
+
+        reporteSeleccionado.value = reporte ?? null;
+    },
+    { immediate: true }
+);
 </script>
 
 <template>
     <div class="mis-reportes-page">
         <div class="demo-notice">
             <strong>Modo demostración:</strong>
-            estos reportes son ficticios y representan emergencias
-            reportadas por el propio responsable de ejemplo.
+            aquí aparecen los incidentes registrados por
+            {{ usuario?.nombre || 'tu cuenta' }}.
+            Su estado se comparte con el panel administrativo.
+            Los datos se pierden al recargar.
         </div>
 
         <section class="summary-grid" aria-label="Resumen de mis reportes">
@@ -325,7 +332,7 @@ function limpiarFiltros() {
                         </div>
 
                         <div>
-                            <dt>Área responsable de la atención</dt>
+                            <dt>Responsable asignado</dt>
                             <dd>{{ reporteSeleccionado.responsable }}</dd>
                         </div>
                     </dl>
@@ -339,11 +346,10 @@ function limpiarFiltros() {
                         <h3 id="titulo-avances" class="timeline-title">
                             Avances de tu reporte
                         </h3>
-
                         <ol class="report-timeline">
                             <li
-                                v-for="(avance, indice) in reporteSeleccionado.seguimiento"
-                                :key="indice"
+                                v-for="avance in avancesSeleccionados"
+                                :key="avance.id"
                             >
                                 <div class="timeline-heading">
                                     <strong>{{ avance.titulo }}</strong>

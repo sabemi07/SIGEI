@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-
+const emit = defineEmits(['registrar']);
 const mostrarConfirmacion = ref(false);
 const mostrarFormulario = ref(false);
 const enviado = ref(false);
@@ -53,33 +53,56 @@ function cancelarFormulario() {
 function enviarAlerta() {
     if (enviado.value || !ubicacion.value) return;
 
-    if (ubicacion.value === 'Otro lugar' && !otroLugar.value.trim()) {
-        return;
-    }
+    const lugar = ubicacion.value === 'Otro lugar'
+        ? otroLugar.value.trim()
+        : ubicacion.value;
 
-    const fecha = new Date();
+    if (!lugar || !tipos.includes(tipo.value)) return;
+
+    const ahora = new Date();
 
     const identificador = globalThis.crypto?.randomUUID
         ? globalThis.crypto.randomUUID()
-        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+    const fecha = new Intl.DateTimeFormat('es-MX', {
+        timeZone: 'America/Cancun',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+    }).format(ahora);
+
+    const hora = new Intl.DateTimeFormat('es-MX', {
+        timeZone: 'America/Cancun',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+    }).format(ahora);
+
+    const nuevoIncidente = {
+        folio: `DEMO-${identificador.toUpperCase()}`,
+        fecha,
+        hora,
+        tipo: tipo.value,
+        ubicacion: lugar,
+        descripcion: descripcion.value.trim() || 'Sin descripción adicional',
+        prioridad: 'Por evaluar',
+        estado: 'Pendiente',
+        responsable: 'Sin asignar',
+        observaciones: '',
+    };
+
+    // App.vue incorpora el reporte a los registros compartidos.
+    emit('registrar', nuevoIncidente);
 
     comprobante.value = {
-        folio: `DEMO-${fecha.getFullYear()}-${identificador.slice(0, 8).toUpperCase()}`,
-        fecha: new Intl.DateTimeFormat('es-MX', {
-            dateStyle: 'short',
-            timeStyle: 'short',
-        }).format(fecha),
-        tipo: tipo.value,
-        ubicacion: ubicacion.value === 'Otro lugar'
-            ? otroLugar.value.trim()
-            : ubicacion.value,
-        descripcion: descripcion.value.trim() || 'Sin descripción adicional',
+        ...nuevoIncidente,
+        fecha: `${fecha} · ${hora}`,
     };
 
     enviado.value = true;
     mostrarFormulario.value = false;
 }
-
 function reiniciar() {
     mostrarConfirmacion.value = false;
     mostrarFormulario.value = false;
@@ -105,7 +128,7 @@ function reiniciar() {
 
             <div class="panic-header-actions">
                 <span class="system-status">
-                    <i></i> Sistema disponible
+                    <i></i> Modo demostración
                 </span>
 
                 <slot name="acceso" />
@@ -163,11 +186,12 @@ function reiniciar() {
             <section v-else-if="comprobante" class="result-card">
                 <div class="result-icon" aria-hidden="true">✓</div>
 
-                <h2>Reporte preparado</h2>
+                <h2>Reporte registrado en la demostración</h2>
 
                 <p>
-                    El reporte se preparó únicamente en esta demostración.
+                    El reporte ya aparece en el panel de esta demostración.
                     No se ha enviado ninguna notificación real.
+                    Los datos se pierden al recargar la página.
                 </p>
 
                 <div class="result-details">

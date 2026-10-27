@@ -1,98 +1,33 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 const props = defineProps({
-    rol: {
-        type: String,
-        required: true,
-        validator: valor =>
-            ['administrador', 'responsable'].includes(valor),
+    notificaciones: {
+        type: Array,
+        default: () => [],
     },
 });
 
-const emit = defineEmits(['navigate']);
+const emit = defineEmits(['abrir', 'leer', 'leer-todas']);
 
 const contenedor = ref(null);
 const botonCampana = ref(null);
 const abierto = ref(false);
 const soloSinLeer = ref(false);
-const notificaciones = ref([]);
 
-function ejemplosPorRol(rol) {
-    if (rol === 'administrador') {
-        return [
-            {
-                id: 'admin-1',
-                titulo: 'Nuevo incidente registrado',
-                descripcion: 'Emergencia médica en Edificio A · Planta baja.',
-                folio: 'SIG-2026-001',
-                fecha: '19/10/2026 · 10:42',
-                leida: false,
-            },
-            {
-                id: 'admin-2',
-                titulo: 'Incidente en atención',
-                descripcion: 'Personal de seguridad atiende el caso del acceso principal.',
-                folio: 'SIG-2026-002',
-                fecha: '19/10/2026 · 10:35',
-                leida: false,
-            },
-            {
-                id: 'admin-3',
-                titulo: 'Caso pendiente de cierre',
-                descripcion: 'La situación de riesgo ya fue atendida.',
-                folio: 'SIG-2026-004',
-                fecha: '19/10/2026 · 10:00',
-                leida: true,
-            },
-        ];
-    }
+const panelId = 'panel-notificaciones';
 
-    return [
-        {
-            id: 'responsable-1',
-            titulo: 'Caso asignado',
-            descripcion: 'Tienes un incidente de seguridad para revisar.',
-            folio: 'SIG-2026-002',
-            fecha: '19/10/2026 · 10:30',
-            leida: false,
-        },
-        {
-            id: 'responsable-2',
-            titulo: 'Recordatorio de seguimiento',
-            descripcion: 'Registra las acciones realizadas en el caso asignado.',
-            folio: 'SIG-2026-002',
-            fecha: '19/10/2026 · 10:28',
-            leida: true,
-        },
-    ];
-}
-
-watch(
-    () => props.rol,
-    (rol) => {
-        notificaciones.value = ejemplosPorRol(rol);
-        abierto.value = false;
-        soloSinLeer.value = false;
-    },
-    { immediate: true }
+const sinLeer = computed(() =>
+    props.notificaciones.filter(item => !item.leida).length
 );
 
-const sinLeer = computed(
-    () => notificaciones.value.filter(item => !item.leida).length
-);
+const visibles = computed(() => {
+    const lista = soloSinLeer.value
+        ? props.notificaciones.filter(item => !item.leida)
+        : props.notificaciones;
 
-const recientes = computed(() =>
-    notificaciones.value.slice(0, 5)
-);
-
-const visibles = computed(() =>
-    soloSinLeer.value
-        ? recientes.value.filter(item => !item.leida)
-        : recientes.value
-);
-
-const panelId = computed(() => `notificaciones-${props.rol}`);
+    return lista.slice(0, 5);
+});
 
 function cerrar(devolverFoco = false) {
     abierto.value = false;
@@ -103,22 +38,12 @@ function cerrar(devolverFoco = false) {
 }
 
 function marcarTodas() {
-    notificaciones.value.forEach(item => {
-        item.leida = true;
-    });
+    emit('leer-todas');
 }
 
 function abrirListado(notificacion) {
-    if (notificacion) {
-        notificacion.leida = true;
-    }
-
     cerrar(true);
-
-    emit(
-        'navigate',
-        props.rol === 'administrador' ? 'incidentes' : 'alertas'
-    );
+    emit('abrir', notificacion.id);
 }
 
 function manejarClickExterior(evento) {
@@ -237,11 +162,7 @@ onBeforeUnmount(() => {
                             class="text-button"
                             @click="abrirListado(item)"
                         >
-                            {{
-                                rol === 'administrador'
-                                    ? 'Ver incidentes'
-                                    : 'Ver alertas asignadas'
-                            }}
+                        Ver incidente
                         </button>
 
                         <button
@@ -249,7 +170,7 @@ onBeforeUnmount(() => {
                             type="button"
                             class="read-button"
                             :aria-label="`Marcar como leída: ${item.titulo}, ${item.folio}`"
-                            @click="item.leida = true"
+                            @click="emit('leer', item.id)"
                         >
                             Marcar leída
                         </button>
@@ -266,7 +187,7 @@ onBeforeUnmount(() => {
             </div>
 
             <footer class="notifications-footer">
-                Avisos recientes de demostración.
+                Hasta 5 avisos recientes de esta cuenta · Demostración
             </footer>
         </section>
     </div>

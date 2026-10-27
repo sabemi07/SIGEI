@@ -1,32 +1,16 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, toRef } from 'vue';
 
-const usuarios = ref([
-    {
-        id: 1,
-        nombre: 'Administrador de demostración',
-        correo: 'admin@example.com',
-        rol: 'Administrador',
-        area: 'Administración',
-        activo: true,
+const props = defineProps({
+    usuarios: {
+        type: Array,
+        default: () => [],
     },
-    {
-        id: 2,
-        nombre: 'Responsable de seguridad',
-        correo: 'seguridad@example.com',
-        rol: 'Responsable',
-        area: 'Seguridad',
-        activo: true,
-    },
-    {
-        id: 3,
-        nombre: 'Responsable de atención médica',
-        correo: 'medico@example.com',
-        rol: 'Responsable',
-        area: 'Atención médica',
-        activo: false,
-    },
-]);
+});
+
+const usuarios = toRef(props, 'usuarios');
+
+
 
 const busqueda = ref('');
 const filtroRol = ref('');

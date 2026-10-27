@@ -1,76 +1,84 @@
 
 <script setup>
+import { computed } from 'vue';
+
+const props = defineProps({
+    incidentes: {
+        type: Array,
+        default: () => [],
+    },
+});
+
 const emit = defineEmits(['navigate']);
 
-const indicadores = [
+const estadosActivos = ['Pendiente', 'Recibida', 'En atención'];
+
+const indicadores = computed(() => [
     {
         titulo: 'Incidentes activos',
-        valor: 3,
-        detalle: 'Requieren atención',
+        valor: props.incidentes.filter(
+            item => estadosActivos.includes(item.estado)
+        ).length,
+        detalle: 'Requieren atención o seguimiento',
         color: 'red',
         icono: '!',
     },
     {
         titulo: 'Pendientes',
-        valor: 2,
-        detalle: 'Esperando respuesta',
+        valor: props.incidentes.filter(
+            item => item.estado === 'Pendiente'
+        ).length,
+        detalle: 'Esperando recepción',
         color: 'amber',
         icono: '◷',
     },
     {
         titulo: 'En atención',
-        valor: 1,
+        valor: props.incidentes.filter(
+            item => item.estado === 'En atención'
+        ).length,
         detalle: 'Actualmente en proceso',
         color: 'blue',
         icono: '↗',
     },
     {
         titulo: 'Atendidos',
-        valor: 1,
+        valor: props.incidentes.filter(
+            item => item.estado === 'Atendida'
+        ).length,
         detalle: 'Pendientes de cierre',
         color: 'green',
         icono: '✓',
     },
-];
+]);
 
-const incidentes = [
-    {
-        folio: 'SIG-2026-001',
-        tipo: 'Emergencia médica',
-        ubicacion: 'Edificio A · Planta baja',
-        hora: '10:42',
-        prioridad: 'Alta',
-        estado: 'Pendiente',
-        color: 'red',
-    },
-    {
-        folio: 'SIG-2026-002',
-        tipo: 'Incidente de seguridad',
-        ubicacion: 'Acceso principal',
-        hora: '10:28',
-        prioridad: 'Media',
-        estado: 'En atención',
-        color: 'blue',
-    },
-    {
-        folio: 'SIG-2026-003',
-        tipo: 'Accidente',
-        ubicacion: 'Laboratorio 2',
-        hora: '09:55',
-        prioridad: 'Alta',
-        estado: 'Pendiente',
-        color: 'red',
-    },
-    {
-        folio: 'SIG-2026-004',
-        tipo: 'Situación de riesgo',
-        ubicacion: 'Edificio B · Segundo piso',
-        hora: '09:30',
-        prioridad: 'Baja',
-        estado: 'Atendida',
-        color: 'green',
-    },
-];
+function claveFecha(incidente) {
+    const [dia, mes, anio] = incidente.fecha.split('/');
+
+    return `${anio}-${mes}-${dia}T${incidente.hora}`;
+}
+
+const incidentes = computed(() =>
+    [...props.incidentes]
+        .sort((a, b) => claveFecha(b).localeCompare(claveFecha(a)))
+        .slice(0, 5)
+);
+
+function colorPrioridad(prioridad) {
+    if (prioridad === 'Alta') return 'red';
+    if (prioridad === 'Media') return 'amber';
+    if (prioridad === 'Baja') return 'green';
+
+    return 'neutral';
+}
+
+function colorEstado(estado) {
+    if (estado === 'Pendiente') return 'red';
+    if (estado === 'Recibida') return 'amber';
+    if (estado === 'En atención') return 'blue';
+
+    return 'green';
+}
 </script>
 
 <template>
@@ -145,11 +153,7 @@ const incidentes = [
                                 <span
                                     :class="[
                                         'status-badge',
-                                        item.prioridad === 'Alta'
-                                            ? 'red'
-                                            : item.prioridad === 'Media'
-                                            ? 'amber'
-                                            : 'green',
+                                        colorPrioridad(item.prioridad),
                                     ]"
                                 >
                                     {{ item.prioridad }}
@@ -160,15 +164,16 @@ const incidentes = [
                                 <span
                                     :class="[
                                         'status-badge',
-                                        item.estado === 'Atendida'
-                                            ? 'green'
-                                            : item.estado === 'En atención'
-                                              ? 'blue'
-                                              : 'red',
+                                        colorEstado(item.estado),
                                     ]"
                                 >
                                     {{ item.estado }}
                                 </span>
+                            </td>
+                        </tr>
+                        <tr v-if="incidentes.length === 0">
+                            <td colspan="6" class="dashboard-empty">
+                                Todavía no hay incidentes registrados.
                             </td>
                         </tr>
                     </tbody>
@@ -500,5 +505,14 @@ const incidentes = [
         align-items: flex-start;
         flex-direction: column;
     }
+}
+.dashboard-empty {
+    padding: 30px !important;
+    color: #8491a3;
+    text-align: center;
+}
+.neutral {
+    background: #eef2f7;
+    color: #64748b;
 }
 </style>
