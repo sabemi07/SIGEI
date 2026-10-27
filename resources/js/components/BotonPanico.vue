@@ -1,5 +1,11 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+const props = defineProps({
+    configuracion: {
+        type: Object,
+        required: true,
+    },
+});
 const emit = defineEmits(['registrar']);
 const mostrarConfirmacion = ref(false);
 const mostrarFormulario = ref(false);
@@ -10,28 +16,30 @@ const ubicacion = ref('');
 const descripcion = ref('');
 const comprobante = ref(null);
 
-const tipos = [
-    'Emergencia médica',
-    'Situación de riesgo',
-    'Altercado',
-    'Persona intoxicada',
-    'Otro incidente',
-];
-
-const ubicaciones = [
-    'Edificio A · Planta baja',
-    'Edificio A · Planta alta',
-    'Edificio B · Aulas',
-    'Edificio C · Pasillos',
-    'Laboratorio',
-    'Biblioteca',
-    'Cafetería',
-    'Estacionamiento',
-    'Cancha deportiva',
-    'Otro lugar',
-];
+const tipos = computed(() => props.configuracion.tipos);
+const ubicaciones = computed(() => props.configuracion.ubicaciones);
 
 const otroLugar = ref('');
+watch(
+    tipos,
+    opciones => {
+        if (!opciones.includes(tipo.value)) {
+            tipo.value = opciones[0] ?? '';
+        }
+    },
+    { immediate: true }
+);
+
+watch(
+    ubicaciones,
+    opciones => {
+        if (!opciones.includes(ubicacion.value)) {
+            ubicacion.value = '';
+            otroLugar.value = '';
+        }
+    },
+    { immediate: true }
+);
 
 function abrirConfirmacion() {
     mostrarConfirmacion.value = true;
@@ -57,7 +65,13 @@ function enviarAlerta() {
         ? otroLugar.value.trim()
         : ubicacion.value;
 
-    if (!lugar || !tipos.includes(tipo.value)) return;
+        if (
+            !lugar ||
+            !tipos.value.includes(tipo.value) ||
+            !ubicaciones.value.includes(ubicacion.value)
+        ) {
+            return;
+        }
 
     const ahora = new Date();
 
@@ -108,7 +122,7 @@ function reiniciar() {
     mostrarFormulario.value = false;
     enviado.value = false;
 
-    tipo.value = 'Emergencia médica';
+    tipo.value = tipos.value[0] ?? '';
     ubicacion.value = '';
     otroLugar.value = '';
     descripcion.value = '';
@@ -122,8 +136,8 @@ function reiniciar() {
             <div class="brand-mark">+</div>
 
             <div>
-                <h1>SIGEI</h1>
-                <p>Sistema de Gestión de Emergencias</p>
+                <h1>{{ configuracion.siglas }}</h1>
+                <p>{{ configuracion.institucion }}</p>
             </div>
 
             <div class="panic-header-actions">

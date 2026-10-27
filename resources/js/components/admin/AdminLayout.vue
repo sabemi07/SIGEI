@@ -70,7 +70,7 @@ function navegar(id) {
                     class="admin-logout"
                     @click="emit('logout')"
                 >
-                    Volver al inicio
+                    Cerrar Sesión
                 </button>
             </div>
         </aside>

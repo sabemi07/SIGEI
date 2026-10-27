@@ -1,34 +1,14 @@
 <script setup>
 import { computed, ref } from 'vue';
 
-function valoresIniciales() {
-    return {
-        institucion: 'Institución de demostración',
-        siglas: 'SIGEI',
-        notificarNuevos: true,
-        notificarAsignaciones: true,
-        notificarSeguimiento: true,
-        tipos: [
-            'Emergencia médica',
-            'Situación de riesgo',
-            'Altercado',
-            'Persona intoxicada',
-            'Otro incidente',
-        ],
-        ubicaciones: [
-            'Edificio A · Planta baja',
-            'Edificio A · Planta alta',
-            'Edificio B · Aulas',
-            'Edificio C · Pasillos',
-            'Laboratorio',
-            'Biblioteca',
-            'Cafetería',
-            'Estacionamiento',
-            'Cancha deportiva',
-            'Otro lugar',
-        ],
-    };
-}
+const props = defineProps({
+    configuracion: {
+        type: Object,
+        required: true,
+    },
+});
+
+const emit = defineEmits(['guardar']);
 
 function copiar(configuracion) {
     return {
@@ -38,7 +18,7 @@ function copiar(configuracion) {
     };
 }
 
-const guardado = ref(valoresIniciales());
+const guardado = computed(() => props.configuracion);
 const formulario = ref(copiar(guardado.value));
 
 const nuevoTipo = ref('');
@@ -127,9 +107,15 @@ function guardarConfiguracion() {
     formulario.value.institucion = institucion;
     formulario.value.siglas = siglas;
 
-    guardado.value = copiar(formulario.value);
+    emit('guardar', copiar(formulario.value), resultado => {
+        if (!resultado?.ok) {
+            error.value = resultado?.error ?? 'No se pudo guardar la configuración.';
+            return;
+        }
 
-    mensaje.value = 'Configuración guardada durante esta sesión de demostración.';
+        mensaje.value =
+            'Configuración aplicada durante esta sesión de demostración.';
+    });
 }
 
 function descartarCambios() {
@@ -146,9 +132,9 @@ function descartarCambios() {
     <div class="settings-page">
         <div class="demo-notice">
             <strong>Modo demostración:</strong>
-            los cambios se conservan al navegar por el panel, pero se
-            pierden al recargar. Estas opciones todavía no modifican
-            las otras pantallas ni generan notificaciones.
+            al guardar, los catálogos se aplican al botón de pánico
+            y las preferencias controlan los nuevos avisos de la campana.
+            La configuración se pierde al recargar.
         </div>
 
         <section class="settings-panel">
@@ -353,8 +339,8 @@ function descartarCambios() {
                     <span>
                         <strong>Cambios de seguimiento</strong>
                         <small>
-                            Avisar al Administrador y al Responsable asignado
-                            cuando cambie el estado de un caso.
+                            Avisar al Administrador, al Responsable asignado y a la cuenta
+                            que reportó el incidente cuando se registre una actualización.
                         </small>
                     </span>
 

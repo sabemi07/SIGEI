@@ -14,6 +14,35 @@ import Usuarios from './admin/Usuarios.vue';
 import Reportes from './admin/Reportes.vue';
 import Configuracion from './admin/Configuracion.vue';
 import Notificaciones from './Notificaciones.vue';
+function valoresIniciales() {
+    return {
+        institucion: 'Institución de demostración',
+        siglas: 'SIGEI',
+        notificarNuevos: true,
+        notificarAsignaciones: true,
+        notificarSeguimiento: true,
+        tipos: [
+            'Emergencia médica',
+            'Situación de riesgo',
+            'Altercado',
+            'Persona intoxicada',
+            'Otro incidente',
+        ],
+        ubicaciones: [
+            'Edificio A · Planta baja',
+            'Edificio A · Planta alta',
+            'Edificio B · Aulas',
+            'Edificio C · Pasillos',
+            'Laboratorio',
+            'Biblioteca',
+            'Cafetería',
+            'Estacionamiento',
+            'Cancha deportiva',
+            'Otro lugar',
+        ],
+    };
+}
+const configuracion = ref(valoresIniciales());
 const usuarios = ref([
     {
         id: 1,
@@ -352,11 +381,13 @@ function registrarIncidente(reporte) {
         seguimientos: [],
         
     });
+if (configuracion.value.notificarNuevos) {
     notificarUsuarios(idsAdministradores(), {
-    folio: reporte.folio,
-    titulo: 'Nuevo incidente registrado',
-    descripcion: 'Se recibió un nuevo reporte pendiente de revisión.',
+        folio: reporte.folio,
+        titulo: 'Nuevo incidente registrado',
+        descripcion: 'Se recibió un nuevo reporte pendiente de revisión.',
     });
+    }   
 }
 function guardarSeguimientoResponsable(cambio, responder) {
     const finalizar = resultado => {
@@ -531,7 +562,11 @@ function notificarCambio(incidente, responsableAnteriorId) {
         incidente.responsableId &&
         incidente.responsableId !== responsableAnteriorId;
 
-    if (nuevaAsignacion) {
+    const enviarAsignacion =
+        nuevaAsignacion &&
+        configuracion.value.notificarAsignaciones;
+
+    if (enviarAsignacion) {
         notificarUsuarios([incidente.responsableId], {
             folio: incidente.folio,
             titulo: 'Nuevo incidente asignado',
@@ -539,17 +574,17 @@ function notificarCambio(incidente, responsableAnteriorId) {
         });
     }
 
+    if (!configuracion.value.notificarSeguimiento) return;
+
     const destinatarios = [
         ...idsAdministradores(),
         incidente.responsableId,
         incidente.reportanteId,
     ].filter(id => id !== null && id !== undefined);
 
-    // Quien recibe el aviso de asignación no recibe además otro
-    // aviso de seguimiento por la misma acción.
     notificarUsuarios(
         destinatarios.filter(id =>
-            !nuevaAsignacion || id !== incidente.responsableId
+            !enviarAsignacion || id !== incidente.responsableId
         ),
         {
             folio: incidente.folio,
@@ -620,11 +655,88 @@ function abrirNotificacion(id) {
     // Un objeto nuevo permite abrir nuevamente el mismo folio.
     solicitudDetalle.value = { folio: incidente.folio };
 }
+function guardarConfiguracion(nueva, responder) {
+    const finalizar = resultado => {
+        if (typeof responder === 'function') {
+            responder(resultado);
+        }
+    };
+
+    if (
+        rolActual.value !== 'administrador' ||
+        !usuarioActual.value?.activo ||
+        usuarioActual.value.rol !== 'Administrador'
+    ) {
+        finalizar({
+            ok: false,
+            error: 'Solo una cuenta de Administrador activa puede guardar.',
+        });
+        return;
+    }
+
+    function limpiarCatalogo(lista) {
+        if (!Array.isArray(lista)) return [];
+
+        const nombres = new Set();
+
+        return lista.reduce((resultado, valor) => {
+            const texto = String(valor ?? '').trim();
+            const clave = texto.toLocaleLowerCase('es');
+
+            if (
+                texto &&
+                texto.length <= 100 &&
+                !nombres.has(clave)
+            ) {
+                nombres.add(clave);
+                resultado.push(texto);
+            }
+
+            return resultado;
+        }, []);
+    }
+
+    const institucion = String(nueva?.institucion ?? '').trim();
+    const siglas = String(nueva?.siglas ?? '').trim();
+    const tipos = limpiarCatalogo(nueva?.tipos);
+    const ubicaciones = limpiarCatalogo(nueva?.ubicaciones);
+
+    if (
+        !institucion ||
+        institucion.length > 150 ||
+        !siglas ||
+        siglas.length > 20 ||
+        !tipos.length ||
+        !ubicaciones.length
+    ) {
+        finalizar({
+            ok: false,
+            error: 'Revisa los datos generales y conserva al menos una opción en cada catálogo.',
+        });
+        return;
+    }
+
+    configuracion.value = {
+        institucion,
+        siglas,
+        tipos,
+        ubicaciones,
+        notificarNuevos: nueva.notificarNuevos === true,
+        notificarAsignaciones: nueva.notificarAsignaciones === true,
+        notificarSeguimiento: nueva.notificarSeguimiento === true,
+    };
+
+    finalizar({ ok: true });
+}
 </script>
 
 <template>
     <!-- Inicio público: no requiere sesión -->
-<BotonPanico v-if="pantalla === 'panico'"@registrar="registrarIncidente">
+<BotonPanico
+    v-if="pantalla === 'panico'"
+    :configuracion="configuracion"
+    @registrar="registrarIncidente"
+>
     <template #acceso>
         <button
             v-if="!rolActual"
@@ -768,9 +880,10 @@ function abrirNotificacion(id) {
                 v-else-if="vistaAdmin === 'reportes'"
                 :incidentes="incidentes"
             />
-
             <Configuracion
                 v-else-if="vistaAdmin === 'configuracion'"
+                :configuracion="configuracion"
+                @guardar="guardarConfiguracion"
             />
         </KeepAlive>
 
