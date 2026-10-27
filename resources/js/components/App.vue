@@ -782,7 +782,11 @@ function guardarConfiguracion(nueva, responder) {
             </button>
         </nav>
 
-    <Login :usuarios="usuarios" @iniciar="iniciarSesion"/>
+    <Login
+    :usuarios="usuarios"
+    :configuracion="configuracion"
+    @iniciar="iniciarSesion"
+    />
     </div>
 
     <!-- Panel del Responsable -->
@@ -792,6 +796,8 @@ function guardarConfiguracion(nueva, responder) {
             rolActual === 'responsable'
         "
         :active-view="vistaResponsable"
+        :configuracion="configuracion"
+        :usuario="usuarioActual"
         @navigate="cambiarVistaResponsable"
         @reportar="abrirBotonPanico"
         @logout="cerrarSesion"
@@ -839,6 +845,8 @@ function guardarConfiguracion(nueva, responder) {
                 ? 'incidentes'
                 : vistaAdmin
         "
+        :configuracion="configuracion"
+        :usuario="usuarioActual"
         @navigate="cambiarVistaAdmin"
         @logout="cerrarSesion"
     >

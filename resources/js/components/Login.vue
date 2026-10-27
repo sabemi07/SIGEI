@@ -2,6 +2,13 @@
 import { computed, ref } from 'vue';
 
 const props = defineProps({
+    configuracion: {
+        type: Object,
+        default: () => ({
+            siglas: 'SIGEI',
+            institucion: 'Institución de demostración',
+        }),
+    },
     usuarios: {
         type: Array,
         default: () => [],
@@ -41,10 +48,10 @@ function iniciarSesionDemo() {
         <section class="login-card">
             <div class="login-logo">+</div>
 
-            <h1>SIGEI</h1>
+            <h1>{{ configuracion.siglas }}</h1>
 
             <p class="login-subtitle">
-                Sistema de Gestión de Emergencias Institucionales
+                {{ configuracion.institucion }}
             </p>
 
             <h2>Acceso de demostración</h2>
@@ -102,7 +109,7 @@ function iniciarSesionDemo() {
                 </button>
             </form>
 
-            <footer>SIGEI · Acceso de demostración</footer>
+            <footer>{{ configuracion.siglas }} · Acceso de demostración</footer>
         </section>
     </main>
 </template>

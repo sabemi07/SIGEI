@@ -1,9 +1,29 @@
 <script setup>
-defineProps({
+import { computed } from 'vue';
+const props = defineProps({
+    configuracion: {
+        type: Object,
+        default: () => ({
+            siglas: 'SIGEI',
+            institucion: 'Institución de demostración',
+        }),
+    },
+    usuario: {
+        type: Object,
+        default: null,
+    },
     activeView: {
         type: String,
         default: 'dashboard',
     },
+});
+
+
+const iniciales = computed(() => {
+    const palabras = (props.usuario?.nombre ?? '').trim().split(/\s+/).filter(Boolean);
+    return palabras.length
+        ? palabras.slice(0, 2).map(palabra => Array.from(palabra)[0]).join('').toLocaleUpperCase('es')
+        : 'AD';
 });
 
 const emit = defineEmits(['navigate', 'logout']);
@@ -36,8 +56,8 @@ function navegar(id) {
                 <div class="admin-brand-icon">+</div>
 
                 <div>
-                    <h2>SIGEI</h2>
-                    <span>Gestión de emergencias</span>
+                    <h2>{{ configuracion.siglas }}</h2>
+                    <span>{{ configuracion.institucion }}</span>
                 </div>
             </div>
 
@@ -50,6 +70,7 @@ function navegar(id) {
                     type="button"
                     class="admin-nav-item"
                     :class="{ active: activeView === item.id }"
+                    :aria-current="activeView === item.id ? 'page' : undefined"
                     @click="navegar(item.id)"
                 >
                     <span class="admin-nav-icon">{{ item.icon }}</span>
@@ -79,7 +100,7 @@ function navegar(id) {
             <header class="admin-topbar">
                 <div>
                     <div class="admin-breadcrumb">
-                        SIGEI <span>/</span> {{ titulos[activeView] }}
+                        {{ configuracion.siglas }} <span>/</span> {{ titulos[activeView] }}
                     </div>
 
                     <h1>{{ titulos[activeView] }}</h1>
@@ -94,11 +115,11 @@ function navegar(id) {
                     >
                         Cerrar sesión
                     </button>
-                    <div class="admin-profile-avatar">AD</div>
+                    <div class="admin-profile-avatar" aria-hidden="true">{{ iniciales }}</div>
 
                     <div class="admin-profile-info">
-                        <strong>Administrador</strong>
-                        <span>Acceso temporal</span>
+                        <strong>{{ usuario?.nombre || 'Administrador' }}</strong>
+                        <span>{{ usuario?.rol || 'Administrador' }} · Demostración</span>
                     </div>
                 </div>
             </header>
@@ -108,7 +129,7 @@ function navegar(id) {
             </main>
 
             <footer class="admin-footer">
-                SIGEI · Sistema de Gestión de Emergencias Institucionales
+                {{ configuracion.siglas }} · {{ configuracion.institucion }}
             </footer>
         </div>
     </div>
@@ -404,4 +425,27 @@ function navegar(id) {
         justify-content: flex-end;
     }
 }
+
+.admin-brand > div:last-child {
+    min-width: 0;
+}
+.admin-brand h2,
+.admin-brand span,
+.admin-footer {
+    overflow-wrap: anywhere;
+}
+.admin-brand-icon,
+.admin-profile-avatar {
+    flex-shrink: 0;
+}
+.admin-profile-info {
+    max-width: 230px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.admin-profile-info strong {
+    line-height: 1.5;
+}
+
 </style>
+

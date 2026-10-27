@@ -1,10 +1,30 @@
 <script setup>
+import { computed } from 'vue';
 
-defineProps({
+const props = defineProps({
+    configuracion: {
+        type: Object,
+        default: () => ({
+            siglas: 'SIGEI',
+            institucion: 'Institución de demostración',
+        }),
+    },
+    usuario: {
+        type: Object,
+        default: null,
+    },
     activeView: {
         type: String,
         default: 'alertas',
     },
+});
+
+
+const iniciales = computed(() => {
+    const palabras = (props.usuario?.nombre ?? '').trim().split(/\s+/).filter(Boolean);
+    return palabras.length
+        ? palabras.slice(0, 2).map(palabra => Array.from(palabra)[0]).join('').toLocaleUpperCase('es')
+        : 'RE';
 });
 
 const emit = defineEmits(['navigate', 'logout', 'reportar']);
@@ -27,8 +47,8 @@ const titulos = {
                 <div class="responsable-brand-icon">+</div>
 
                 <div>
-                    <h2>SIGEI</h2>
-                    <span>Gestión de emergencias</span>
+                    <h2>{{ configuracion.siglas }}</h2>
+                    <span>{{ configuracion.institucion }}</span>
                 </div>
             </div>
 
@@ -95,7 +115,7 @@ const titulos = {
             <header class="responsable-topbar">
                 <div>
                     <div class="responsable-breadcrumb">
-                        SIGEI <span>/</span> Responsable
+                        {{ configuracion.siglas }} <span>/</span> Responsable
                     </div>
 
                     <h1>{{ titulos[activeView] || 'Panel del responsable' }}</h1>
@@ -114,12 +134,12 @@ const titulos = {
                         class="responsable-profile-avatar"
                         aria-hidden="true"
                     >
-                        RE
+                        {{ iniciales }}
                     </div>
 
                     <div class="responsable-profile-info">
-                        <strong>Responsable</strong>
-                        <span>Sesión de demostración</span>
+                        <strong>{{ usuario?.nombre || 'Responsable' }}</strong>
+                        <span>{{ usuario?.rol || 'Responsable' }} · Demostración</span>
                     </div>
                 </div>
             </header>
@@ -129,7 +149,7 @@ const titulos = {
             </main>
 
             <footer class="responsable-footer">
-                SIGEI · Sistema de Gestión de Emergencias Institucionales
+                {{ configuracion.siglas }} · {{ configuracion.institucion }}
             </footer>
         </div>
     </div>
@@ -446,4 +466,26 @@ const titulos = {
         justify-content: flex-end;
     }
 }
+
+.responsable-brand > div:last-child {
+    min-width: 0;
+}
+.responsable-brand h2,
+.responsable-brand span,
+.responsable-footer {
+    overflow-wrap: anywhere;
+}
+.responsable-brand-icon,
+.responsable-profile-avatar {
+    flex-shrink: 0;
+}
+.responsable-profile-info {
+    max-width: 230px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.responsable-profile-info strong {
+    line-height: 1.5;
+}
+
 </style>

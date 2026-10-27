@@ -29,6 +29,72 @@ const visibles = computed(() => {
     return lista.slice(0, 5);
 });
 
+
+const permisoDispositivo = ref('checking');
+const solicitandoPermiso = ref(false);
+const errorPermiso = ref('');
+
+const mensajesPermiso = {
+    checking: 'Comprobando compatibilidad del dispositivo…',
+    insecure: 'Abre el sitio mediante HTTPS o localhost para solicitar permiso.',
+    unsupported: 'Este navegador no ofrece las funciones necesarias para Web Push. En iPhone, prueba añadiendo el sitio a la pantalla de inicio.',
+    default: 'Puedes autorizar avisos en este navegador. El envío real aún está pendiente de conectar.',
+    granted: 'Permiso concedido en este navegador. El envío Web Push todavía no está conectado.',
+    denied: 'Permiso bloqueado. Puedes cambiarlo en la configuración del sitio del navegador y volver a comprobarlo.',
+};
+
+const textoPermiso = computed(() =>
+    mensajesPermiso[permisoDispositivo.value] ?? mensajesPermiso.default
+);
+
+function revisarPermisoDispositivo() {
+    if (typeof window === 'undefined') return;
+
+    if (!window.isSecureContext) {
+        permisoDispositivo.value = 'insecure';
+        return;
+    }
+
+    if (
+        !('Notification' in window) ||
+        typeof window.Notification.requestPermission !== 'function' ||
+        !('serviceWorker' in navigator) ||
+        !('PushManager' in window)
+    ) {
+        permisoDispositivo.value = 'unsupported';
+        return;
+    }
+
+    permisoDispositivo.value = window.Notification.permission;
+}
+
+async function solicitarPermisoDispositivo() {
+    errorPermiso.value = '';
+    revisarPermisoDispositivo();
+
+    if (permisoDispositivo.value !== 'default' || solicitandoPermiso.value) return;
+
+    solicitandoPermiso.value = true;
+
+    try {
+        const resultado = await window.Notification.requestPermission();
+        permisoDispositivo.value = resultado;
+
+        if (resultado === 'default') {
+            errorPermiso.value = 'No se concedió el permiso. Puedes intentarlo de nuevo cuando lo desees.';
+        }
+    } catch {
+        revisarPermisoDispositivo();
+        errorPermiso.value = 'No se pudo solicitar permiso. Revisa los ajustes del navegador y abre el sitio directamente.';
+    } finally {
+        solicitandoPermiso.value = false;
+    }
+}
+
+function alCambiarVisibilidad() {
+    if (document.visibilityState === 'visible') revisarPermisoDispositivo();
+}
+
 function cerrar(devolverFoco = false) {
     abierto.value = false;
 
@@ -59,11 +125,16 @@ function manejarTeclado(evento) {
 }
 
 onMounted(() => {
+    revisarPermisoDispositivo();
+    window.addEventListener('focus', revisarPermisoDispositivo);
+    document.addEventListener('visibilitychange', alCambiarVisibilidad);
     document.addEventListener('pointerdown', manejarClickExterior);
     document.addEventListener('keydown', manejarTeclado);
 });
 
 onBeforeUnmount(() => {
+    window.removeEventListener('focus', revisarPermisoDispositivo);
+    document.removeEventListener('visibilitychange', alCambiarVisibilidad);
     document.removeEventListener('pointerdown', manejarClickExterior);
     document.removeEventListener('keydown', manejarTeclado);
 });
@@ -185,6 +256,35 @@ onBeforeUnmount(() => {
                         : 'No hay notificaciones recientes.'
                 }}
             </div>
+
+            <section class="device-settings" aria-labelledby="titulo-avisos-dispositivo">
+                <h3 id="titulo-avisos-dispositivo">Avisos en este dispositivo</h3>
+                <p role="status">{{ textoPermiso }}</p>
+
+                <button
+                    v-if="permisoDispositivo === 'default'"
+                    type="button"
+                    class="device-permission-button"
+                    :disabled="solicitandoPermiso"
+                    @click="solicitarPermisoDispositivo"
+                >
+                    {{ solicitandoPermiso ? 'Solicitando permiso…' : 'Permitir notificaciones en este dispositivo' }}
+                </button>
+
+                <button
+                    v-else
+                    type="button"
+                    class="text-button"
+                    @click="revisarPermisoDispositivo"
+                >
+                    Comprobar permiso
+                </button>
+
+                <p v-if="errorPermiso" class="device-permission-error" role="alert">
+                    {{ errorPermiso }}
+                </p>
+                <small>El permiso pertenece al navegador y al sitio; no a una cuenta de SIGEI. La campana interna funciona de forma independiente.</small>
+            </section>
 
             <footer class="notifications-footer">
                 Hasta 5 avisos recientes de esta cuenta · Demostración
@@ -418,6 +518,53 @@ input:focus-visible {
         right: 20px;
         margin-top: 12px;
         max-height: 65dvh;
+    }
+}
+
+.device-settings {
+    padding: 16px 17px;
+    border-top: 1px solid #edf1f6;
+    background: #f8fafc;
+}
+.device-settings h3 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 700;
+}
+.device-settings p {
+    margin: 0 0 10px;
+    color: #536277;
+    font-size: 11px;
+    line-height: 1.6;
+}
+.device-settings small {
+    display: block;
+    margin-top: 10px;
+    color: #64748b;
+    font-size: 10px;
+    line-height: 1.6;
+}
+.device-permission-button {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #2563eb;
+    border-radius: 7px;
+    background: #2563eb;
+    color: white;
+    font-size: 11px;
+    cursor: pointer;
+}
+.device-permission-button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+.device-settings .device-permission-error { color: #b91c1c; }
+.notification-folio { overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+    .notifications-panel {
+        top: 80px;
+        margin-top: 0;
+        max-height: calc(100dvh - 100px);
     }
 }
 </style>
