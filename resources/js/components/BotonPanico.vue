@@ -1,7 +1,12 @@
-
 <script setup>
-import { ref } from 'vue';
-
+import { computed, ref, watch } from 'vue';
+const props = defineProps({
+    configuracion: {
+        type: Object,
+        required: true,
+    },
+});
+const emit = defineEmits(['registrar']);
 const mostrarConfirmacion = ref(false);
 const mostrarFormulario = ref(false);
 const enviado = ref(false);
@@ -9,20 +14,38 @@ const enviado = ref(false);
 const tipo = ref('Emergencia médica');
 const ubicacion = ref('');
 const descripcion = ref('');
+const comprobante = ref(null);
 
-const tipos = [
-    'Emergencia médica',
-    'Situación de riesgo',
-    'Altercado',
-    'Persona intoxicada',
-    'Otro incidente'
-];
+const tipos = computed(() => props.configuracion.tipos);
+const ubicaciones = computed(() => props.configuracion.ubicaciones);
+
+const otroLugar = ref('');
+watch(
+    tipos,
+    opciones => {
+        if (!opciones.includes(tipo.value)) {
+            tipo.value = opciones[0] ?? '';
+        }
+    },
+    { immediate: true }
+);
+
+watch(
+    ubicaciones,
+    opciones => {
+        if (!opciones.includes(ubicacion.value)) {
+            ubicacion.value = '';
+            otroLugar.value = '';
+        }
+    },
+    { immediate: true }
+);
 
 function abrirConfirmacion() {
     mostrarConfirmacion.value = true;
 }
 
-function cancelar() {
+function cancelarConfirmacion() {
     mostrarConfirmacion.value = false;
 }
 
@@ -31,50 +54,111 @@ function continuar() {
     mostrarFormulario.value = true;
 }
 
-function enviarAlerta() {
-    if (!ubicacion.value.trim()) {
-        alert('Selecciona la ubicación de la emergencia.');
-        return;
-    }
-
-    // Prototipo visual: todavía no envía una alerta real.
-    enviado.value = true;
+function cancelarFormulario() {
     mostrarFormulario.value = false;
 }
 
+function enviarAlerta() {
+    if (enviado.value || !ubicacion.value) return;
+
+    const lugar = ubicacion.value === 'Otro lugar'
+        ? otroLugar.value.trim()
+        : ubicacion.value;
+
+        if (
+            !lugar ||
+            !tipos.value.includes(tipo.value) ||
+            !ubicaciones.value.includes(ubicacion.value)
+        ) {
+            return;
+        }
+
+    const ahora = new Date();
+
+    const identificador = globalThis.crypto?.randomUUID
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+    const fecha = new Intl.DateTimeFormat('es-MX', {
+        timeZone: 'America/Cancun',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+    }).format(ahora);
+
+    const hora = new Intl.DateTimeFormat('es-MX', {
+        timeZone: 'America/Cancun',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+    }).format(ahora);
+
+    const nuevoIncidente = {
+        folio: `DEMO-${identificador.toUpperCase()}`,
+        fecha,
+        hora,
+        tipo: tipo.value,
+        ubicacion: lugar,
+        descripcion: descripcion.value.trim() || 'Sin descripción adicional',
+        prioridad: 'Por evaluar',
+        estado: 'Pendiente',
+        responsable: 'Sin asignar',
+        observaciones: '',
+    };
+
+    // App.vue incorpora el reporte a los registros compartidos.
+    emit('registrar', nuevoIncidente);
+
+    comprobante.value = {
+        ...nuevoIncidente,
+        fecha: `${fecha} · ${hora}`,
+    };
+
+    enviado.value = true;
+    mostrarFormulario.value = false;
+}
 function reiniciar() {
     mostrarConfirmacion.value = false;
     mostrarFormulario.value = false;
     enviado.value = false;
-    tipo.value = 'Emergencia médica';
+
+    tipo.value = tipos.value[0] ?? '';
     ubicacion.value = '';
+    otroLugar.value = '';
     descripcion.value = '';
+    comprobante.value = null;
 }
 </script>
 
 <template>
-    <main class="panic-page">
+    <div class="panic-page">
         <header class="panic-header">
             <div class="brand-mark">+</div>
 
             <div>
-                <h1>SIGEI</h1>
-                <p>Sistema de Gestión de Emergencias</p>
+                <h1>{{ configuracion.siglas }}</h1>
+                <p>{{ configuracion.institucion }}</p>
             </div>
 
-            <span class="system-status">
-                <i></i> Sistema disponible
-            </span>
+            <div class="panic-header-actions">
+                <span class="system-status">
+                    <i></i> Modo demostración
+                </span>
+
+                <slot name="acceso" />
+            </div>
         </header>
 
         <section class="panic-content">
             <template v-if="!enviado">
                 <div class="intro">
                     <span class="eyebrow">CENTRO DE EMERGENCIAS</span>
+
                     <h2>¿Necesitas ayuda inmediata?</h2>
+
                     <p>
-                        Activa una alerta para informar al personal
-                        responsable de una situación de emergencia.
+                        Reporta una emergencia dentro de la institución.
+                        No necesitas iniciar sesión.
                     </p>
                 </div>
 
@@ -92,6 +176,7 @@ function reiniciar() {
 
                     <div class="panic-info">
                         <span class="info-icon">i</span>
+
                         <p>
                             Utiliza este botón únicamente cuando exista
                             una situación que requiera atención urgente.
@@ -100,10 +185,11 @@ function reiniciar() {
                 </div>
 
                 <div class="emergency-note">
-                    <span>⚠</span>
+                    <span aria-hidden="true">⚠</span>
+
                     <p>
                         <strong>Importante</strong>
-                        <br>
+                        <br />
                         Si existe peligro inmediato, busca un lugar seguro
                         y contacta a los servicios de emergencia
                         correspondientes.
@@ -111,25 +197,49 @@ function reiniciar() {
                 </div>
             </template>
 
-            <section v-else class="result-card">
-                <div class="result-icon">✓</div>
-                <h2>Reporte preparado</h2>
+            <section v-else-if="comprobante" class="result-card">
+                <div class="result-icon" aria-hidden="true">✓</div>
+
+                <h2>Reporte registrado en la demostración</h2>
+
                 <p>
-                    El reporte se registró únicamente en esta demostración.
+                    El reporte ya aparece en el panel de esta demostración.
                     No se ha enviado ninguna notificación real.
+                    Los datos se pierden al recargar la página.
                 </p>
 
                 <div class="result-details">
-                    <p><strong>Tipo:</strong> {{ tipo }}</p>
-                    <p><strong>Ubicación:</strong> {{ ubicacion }}</p>
+                    <p>
+                        <strong>Folio de demostración:</strong>
+                        {{ comprobante.folio }}
+                    </p>
+
+                    <p>
+                        <strong>Fecha:</strong>
+                        {{ comprobante.fecha }}
+                    </p>
+
+                    <p>
+                        <strong>Tipo:</strong>
+                        {{ comprobante.tipo }}
+                    </p>
+
+                    <p>
+                        <strong>Ubicación:</strong>
+                        {{ comprobante.ubicacion }}
+                    </p>
+
                     <p>
                         <strong>Descripción:</strong>
-                        {{ descripcion || 'Sin descripción adicional' }}
+                        {{ comprobante.descripcion }}
                     </p>
                 </div>
 
-                <button class="btn btn-danger w-100"
-                        @click="reiniciar">
+                <button
+                    type="button"
+                    class="btn btn-danger w-100"
+                    @click="reiniciar"
+                >
                     Volver al inicio
                 </button>
             </section>
@@ -140,11 +250,11 @@ function reiniciar() {
             <span>Interfaz de demostración</span>
         </footer>
 
-        <!-- Confirmación -->
+        <!-- Confirmación breve -->
         <div
             v-if="mostrarConfirmacion"
             class="modal-backdrop-custom"
-            @click.self="cancelar"
+            @click.self="cancelarConfirmacion"
         >
             <section
                 class="dialog-card"
@@ -154,87 +264,118 @@ function reiniciar() {
             >
                 <div class="dialog-icon">!</div>
 
-                <h2 id="confirm-title">¿Confirmas la emergencia?</h2>
+                <h2 id="confirm-title">¿Deseas reportar una emergencia?</h2>
 
                 <p>
-                    Se abrirá el formulario para describir el incidente
-                    y proporcionar su ubicación.
+                    Indica el tipo de emergencia y dónde ocurre.
                 </p>
 
                 <div class="dialog-actions">
-                    <button class="btn btn-light"
-                            @click="cancelar">
+                    <button
+                        type="button"
+                        class="btn btn-light"
+                        @click="cancelarConfirmacion"
+                    >
                         Cancelar
                     </button>
 
-                    <button class="btn btn-danger"
-                            @click="continuar">
+                    <button
+                        type="button"
+                        class="btn btn-danger"
+                        @click="continuar"
+                    >
                         Sí, continuar
                     </button>
                 </div>
             </section>
         </div>
 
-        <!-- Formulario de alerta -->
+        <!-- Formulario único -->
         <div
             v-if="mostrarFormulario"
             class="modal-backdrop-custom"
         >
-            <section class="dialog-card form-card">
+            <section
+                class="dialog-card form-card"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="report-title"
+            >
                 <span class="eyebrow">NUEVO REPORTE</span>
-                <h2>Información de la emergencia</h2>
+
+                <h2 id="report-title">Información de la emergencia</h2>
 
                 <p>
-                    Proporciona los datos necesarios para identificar
-                    la situación.
+                    Selecciona qué ocurre y su ubicación.
                 </p>
 
                 <form @submit.prevent="enviarAlerta">
-                    <label for="tipo">Tipo de incidente</label>
-                    <select id="tipo"
-                            class="form-select"
-                            v-model="tipo">
-                        <option v-for="t in tipos" :key="t">
-                            {{ t }}
+                    <label for="tipo">Tipo de emergencia</label>
+
+                    <select
+                        id="tipo"
+                        v-model="tipo"
+                        class="form-select"
+                    >
+                        <option v-for="opcion in tipos" :key="opcion">
+                            {{ opcion }}
                         </option>
                     </select>
 
                     <label for="ubicacion">Ubicación *</label>
-                    <select id="ubicacion"
-                            class="form-select"
-                            v-model="ubicacion"
-                            required>
+
+                    <select
+                        id="ubicacion"
+                        v-model="ubicacion"
+                        class="form-select"
+                        required
+                    >
                         <option disabled value="">
                             Selecciona una ubicación
                         </option>
-                        <option>Edificio A · Planta baja</option>
-                        <option>Edificio A · Planta alta</option>
-                        <option>Edificio B · Aulas</option>
-                        <option>Edificio C · Pasillos</option>
-                        <option>Laboratorio</option>
-                        <option>Cafetería</option>
-                        <option>Estacionamiento</option>
-                        <option>Cancha deportiva</option>
-                        <option>Otro lugar</option>
+
+                        <option v-for="lugar in ubicaciones" :key="lugar">
+                            {{ lugar }}
+                        </option>
                     </select>
 
+                    <template v-if="ubicacion === 'Otro lugar'">
+                        <label for="otro-lugar">Indica el lugar *</label>
+
+                        <input
+                            id="otro-lugar"
+                            v-model="otroLugar"
+                            type="text"
+                            class="form-control"
+                            maxlength="150"
+                            pattern=".*\S.*"
+                            placeholder="Escribe dónde ocurre la emergencia..."
+                            required
+                        />
+                    </template>
+
                     <label for="descripcion">
-                        Descripción adicional
+                        Descripción adicional (opcional)
                     </label>
+
                     <textarea
                         id="descripcion"
-                        class="form-control"
                         v-model="descripcion"
+                        class="form-control"
                         rows="3"
                         maxlength="500"
-                        placeholder="Describe brevemente lo ocurrido..."
+                        placeholder="Ej. Aula 203, persona que requiere apoyo..."
                     ></textarea>
+
+                    <small class="d-block text-secondary mt-3">
+                        Demostración: no se enviará una alerta real.
+                    </small>
 
                     <div class="dialog-actions">
                         <button
                             type="button"
                             class="btn btn-light"
-                            @click="mostrarFormulario = false"
+                            @click="cancelarFormulario"
                         >
                             Cancelar
                         </button>
@@ -246,5 +387,30 @@ function reiniciar() {
                 </form>
             </section>
         </div>
-    </main>
+    </div>
 </template>
+
+<style scoped>
+.form-card {
+    width: min(100%, 560px);
+    max-height: calc(100dvh - 40px);
+    overflow-y: auto;
+}
+
+.result-details {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+@media (max-width: 576px) {
+    .form-card .dialog-actions {
+        display: flex;
+        flex-direction: column-reverse;
+        gap: 10px;
+    }
+
+    .form-card .dialog-actions .btn {
+        width: 100%;
+    }
+}
+</style>
