@@ -1,6 +1,8 @@
 <script setup>
 import { computed } from 'vue';
 const props = defineProps({
+    demo: { type: Boolean, default: true },
+    busy: { type: Boolean, default: false },
     configuracion: {
         type: Object,
         default: () => ({
@@ -83,12 +85,13 @@ function navegar(id) {
             <div class="admin-sidebar-footer">
                 <div class="admin-demo-badge">
                     <span></span>
-                    Modo demostración
+                    {{ demo ? 'Modo demostración' : 'Sesión institucional' }}
                 </div>
 
                 <button
                     type="button"
                     class="admin-logout"
+                    :disabled="busy"
                     @click="emit('logout')"
                 >
                     Cerrar Sesión
@@ -111,6 +114,7 @@ function navegar(id) {
                     <button
                         type="button"
                         class="btn btn-outline-secondary btn-sm mobile-logout"
+                        :disabled="busy"
                         @click="emit('logout')"
                     >
                         Cerrar sesión
@@ -119,7 +123,7 @@ function navegar(id) {
 
                     <div class="admin-profile-info">
                         <strong>{{ usuario?.nombre || 'Administrador' }}</strong>
-                        <span>{{ usuario?.rol || 'Administrador' }} · Demostración</span>
+                        <span>{{ usuario?.rol || 'Administrador' }} · {{ demo ? 'Demostración' : 'Cuenta institucional' }}</span>
                     </div>
                 </div>
             </header>

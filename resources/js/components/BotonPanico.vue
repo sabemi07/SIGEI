@@ -1,6 +1,9 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { requireIncidentReceipt } from '../incidentClient';
 const props = defineProps({
+    demo: { type: Boolean, default: true },
+    ready: { type: Boolean, default: true },
     configuracion: {
         type: Object,
         required: true,
@@ -15,16 +18,25 @@ const tipo = ref('Emergencia médica');
 const ubicacion = ref('');
 const descripcion = ref('');
 const comprobante = ref(null);
+const enviando = ref(false);
+const errorEnvio = ref('');
+const solicitudId = ref(null);
+let desmontado = false;
+onBeforeUnmount(() => { desmontado = true; });
 
-const tipos = computed(() => props.configuracion.tipos);
-const ubicaciones = computed(() => props.configuracion.ubicaciones);
+const tipos = computed(() => props.configuracion.tipos ?? []);
+const ubicaciones = computed(() => props.configuracion.ubicaciones ?? []);
 
 const otroLugar = ref('');
+const requiereDetalle = computed(() => props.demo
+    ? ubicacion.value === 'Otro lugar'
+    : ubicaciones.value.find(item => item.id === ubicacion.value)?.requiereDetalle === true);
 watch(
     tipos,
     opciones => {
-        if (!opciones.includes(tipo.value)) {
-            tipo.value = opciones[0] ?? '';
+        const valores = opciones.map(item => props.demo ? item : item.id);
+        if (!valores.includes(tipo.value)) {
+            tipo.value = valores[0] ?? '';
         }
     },
     { immediate: true }
@@ -33,7 +45,7 @@ watch(
 watch(
     ubicaciones,
     opciones => {
-        if (!opciones.includes(ubicacion.value)) {
+        if (!opciones.map(item => props.demo ? item : item.id).includes(ubicacion.value)) {
             ubicacion.value = '';
             otroLugar.value = '';
         }
@@ -55,10 +67,56 @@ function continuar() {
 }
 
 function cancelarFormulario() {
+    if (enviando.value) return;
     mostrarFormulario.value = false;
+    if (!props.demo) {
+        solicitudId.value = null;
+        errorEnvio.value = '';
+    }
 }
 
 function enviarAlerta() {
+    if (enviando.value) return;
+    if (!props.demo) {
+        errorEnvio.value = '';
+        if (!props.ready) {
+            errorEnvio.value = 'Todavía no se pudo cargar la conexión y los catálogos. Vuelve a intentarlo.';
+            return;
+        }
+        if (!tipo.value || !ubicacion.value || (requiereDetalle.value && !otroLugar.value.trim())) return;
+        if (!solicitudId.value) {
+            if (typeof globalThis.crypto?.randomUUID !== 'function') {
+                errorEnvio.value = 'Este navegador necesita una conexión segura para registrar el reporte.';
+                return;
+            }
+            solicitudId.value = globalThis.crypto.randomUUID();
+        }
+        enviando.value = true;
+        emit('registrar', {
+            tipo_id: tipo.value,
+            ubicacion_id: ubicacion.value,
+            otro_lugar: requiereDetalle.value ? otroLugar.value.trim() : null,
+            descripcion: descripcion.value.trim() || null,
+            solicitud_id: solicitudId.value,
+            website: '',
+        }, resultado => {
+            if (desmontado) return;
+            enviando.value = false;
+            if (!resultado?.ok) {
+                errorEnvio.value = resultado?.error ?? 'No se pudo registrar. Conserva los datos y vuelve a intentarlo.';
+                return;
+            }
+            try {
+                const recibo = requireIncidentReceipt(resultado.data);
+                comprobante.value = { ...recibo, fecha: `${recibo.fecha} · ${recibo.hora}` };
+                enviado.value = true;
+                mostrarFormulario.value = false;
+            } catch (error) {
+                errorEnvio.value = error.message;
+            }
+        });
+        return;
+    }
     if (enviado.value || !ubicacion.value) return;
 
     const lugar = ubicacion.value === 'Otro lugar'
@@ -118,15 +176,18 @@ function enviarAlerta() {
     mostrarFormulario.value = false;
 }
 function reiniciar() {
+    if (enviando.value) return;
     mostrarConfirmacion.value = false;
     mostrarFormulario.value = false;
     enviado.value = false;
 
-    tipo.value = tipos.value[0] ?? '';
+    tipo.value = props.demo ? (tipos.value[0] ?? '') : (tipos.value[0]?.id ?? '');
     ubicacion.value = '';
     otroLugar.value = '';
     descripcion.value = '';
     comprobante.value = null;
+    solicitudId.value = null;
+    errorEnvio.value = '';
 }
 </script>
 
@@ -142,7 +203,7 @@ function reiniciar() {
 
             <div class="panic-header-actions">
                 <span class="system-status">
-                    <i></i> Modo demostración
+                    <i></i> {{ demo ? 'Modo demostración' : 'Registro de emergencias' }}
                 </span>
 
                 <slot name="acceso" />
@@ -200,17 +261,18 @@ function reiniciar() {
             <section v-else-if="comprobante" class="result-card">
                 <div class="result-icon" aria-hidden="true">✓</div>
 
-                <h2>Reporte registrado en la demostración</h2>
+                <h2>{{ demo ? 'Reporte registrado en la demostración' : 'Reporte registrado' }}</h2>
 
-                <p>
+                <p v-if="demo">
                     El reporte ya aparece en el panel de esta demostración.
                     No se ha enviado ninguna notificación real.
                     Los datos se pierden al recargar la página.
                 </p>
+                <p v-else>Tu reporte quedó guardado para revisión. Conserva el folio. Registrar el reporte no significa que el personal haya confirmado su recepción.</p>
 
                 <div class="result-details">
                     <p>
-                        <strong>Folio de demostración:</strong>
+                        <strong>{{ demo ? 'Folio de demostración:' : 'Folio:' }}</strong>
                         {{ comprobante.folio }}
                     </p>
 
@@ -246,8 +308,8 @@ function reiniciar() {
         </section>
 
         <footer class="panic-footer">
-            SIGEI · Prototipo de botón de pánico
-            <span>Interfaz de demostración</span>
+            {{ configuracion.siglas }} · {{ demo ? 'Prototipo de botón de pánico' : 'Gestión de emergencias' }}
+            <span>{{ demo ? 'Interfaz de demostración' : 'El reporte se guarda en el sistema. Los avisos Web Push aún no están conectados.' }}</span>
         </footer>
 
         <!-- Confirmación breve -->
@@ -310,6 +372,7 @@ function reiniciar() {
                 </p>
 
                 <form @submit.prevent="enviarAlerta">
+                    <fieldset :disabled="enviando" class="report-fields">
                     <label for="tipo">Tipo de emergencia</label>
 
                     <select
@@ -317,8 +380,8 @@ function reiniciar() {
                         v-model="tipo"
                         class="form-select"
                     >
-                        <option v-for="opcion in tipos" :key="opcion">
-                            {{ opcion }}
+                        <option v-for="opcion in tipos" :key="demo ? opcion : opcion.id" :value="demo ? opcion : opcion.id">
+                            {{ demo ? opcion : opcion.nombre }}
                         </option>
                     </select>
 
@@ -334,12 +397,12 @@ function reiniciar() {
                             Selecciona una ubicación
                         </option>
 
-                        <option v-for="lugar in ubicaciones" :key="lugar">
-                            {{ lugar }}
+                        <option v-for="lugar in ubicaciones" :key="demo ? lugar : lugar.id" :value="demo ? lugar : lugar.id">
+                            {{ demo ? lugar : lugar.nombre }}
                         </option>
                     </select>
 
-                    <template v-if="ubicacion === 'Otro lugar'">
+                    <template v-if="requiereDetalle">
                         <label for="otro-lugar">Indica el lugar *</label>
 
                         <input
@@ -347,7 +410,7 @@ function reiniciar() {
                             v-model="otroLugar"
                             type="text"
                             class="form-control"
-                            maxlength="150"
+                            :maxlength="demo ? 150 : 255"
                             pattern=".*\S.*"
                             placeholder="Escribe dónde ocurre la emergencia..."
                             required
@@ -363,13 +426,16 @@ function reiniciar() {
                         v-model="descripcion"
                         class="form-control"
                         rows="3"
-                        maxlength="500"
+                        :maxlength="demo ? 500 : 1000"
                         placeholder="Ej. Aula 203, persona que requiere apoyo..."
                     ></textarea>
 
-                    <small class="d-block text-secondary mt-3">
+                    <small v-if="demo" class="d-block text-secondary mt-3">
                         Demostración: no se enviará una alerta real.
                     </small>
+                    <small v-else class="d-block text-secondary mt-3">El reporte se guardará al confirmar. No necesitas una cuenta.</small>
+                    <small v-if="!demo && !ready" class="d-block text-secondary mt-2" role="status">Comprobando la conexión y los catálogos. Si no cargan, vuelve al inicio y reintenta la conexión.</small>
+                    <div v-if="errorEnvio" class="alert alert-danger mt-3" role="alert">{{ errorEnvio }}</div>
 
                     <div class="dialog-actions">
                         <button
@@ -380,10 +446,11 @@ function reiniciar() {
                             Cancelar
                         </button>
 
-                        <button type="submit" class="btn btn-danger">
-                            Registrar reporte
+                        <button type="submit" class="btn btn-danger" :disabled="!demo && (!ready || enviando)">
+                            {{ enviando ? 'Registrando…' : 'Registrar reporte' }}
                         </button>
                     </div>
+                    </fieldset>
                 </form>
             </section>
         </div>
@@ -391,6 +458,7 @@ function reiniciar() {
 </template>
 
 <style scoped>
+.report-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 .form-card {
     width: min(100%, 560px);
     max-height: calc(100dvh - 40px);

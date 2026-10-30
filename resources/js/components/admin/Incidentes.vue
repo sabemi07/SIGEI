@@ -2,6 +2,7 @@
 <script setup>
 import { computed, ref, toRef } from 'vue';
 const props = defineProps({
+    demo: { type: Boolean, default: true },
     incidentes: {
         type: Array,
         default: () => [],
@@ -132,7 +133,7 @@ function gestionarIncidente(incidente) {
 
 <template>
     <div class="incidents-page">
-        <div class="demo-notice">
+        <div v-if="demo" class="demo-notice">
             <span class="notice-icon">i</span>
             <span>
                 <strong>Modo demostración:</strong>
@@ -296,7 +297,7 @@ function gestionarIncidente(incidente) {
 
             <footer class="table-footer">
                 Mostrando {{ incidentesFiltrados.length }}
-                de {{ incidentes.length }} incidentes de demostración.
+                de {{ incidentes.length }} incidentes{{ demo ? ' de demostración' : '' }}.
             </footer>
         </section>
     </div>

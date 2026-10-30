@@ -1,25 +1,29 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
+    real: { type: Boolean, default: false },
+    saving: { type: Boolean, default: false },
     configuracion: {
         type: Object,
         required: true,
     },
 });
 
-const emit = defineEmits(['guardar']);
+const emit = defineEmits(['guardar', 'recargar']);
 
 function copiar(configuracion) {
     return {
         ...configuracion,
-        tipos: [...configuracion.tipos],
-        ubicaciones: [...configuracion.ubicaciones],
+        tipos: configuracion.tipos.map(item => typeof item === 'string' ? item : { ...item }),
+        ubicaciones: configuracion.ubicaciones.map(item => typeof item === 'string' ? item : { ...item }),
     };
 }
 
-const guardado = computed(() => props.configuracion);
+const guardado = ref(copiar(props.configuracion));
 const formulario = ref(copiar(guardado.value));
+const procesando = ref(false);
+const bloqueado = computed(() => props.saving || procesando.value);
 
 const nuevoTipo = ref('');
 const nuevaUbicacion = ref('');
@@ -30,6 +34,14 @@ const hayCambios = computed(() =>
     JSON.stringify(formulario.value) !==
     JSON.stringify(guardado.value)
 );
+const hayVersionNueva = computed(() => props.real && props.configuracion.version !== guardado.value.version);
+
+watch(() => props.configuracion, nueva => {
+    if (!hayCambios.value && !procesando.value) {
+        guardado.value = copiar(nueva);
+        formulario.value = copiar(nueva);
+    }
+});
 
 function limpiarMensajes() {
     error.value = '';
@@ -41,6 +53,7 @@ function normalizar(texto) {
 }
 
 function agregarElemento(catalogo, campo) {
+    if (bloqueado.value) return;
     limpiarMensajes();
 
     const entrada = campo === 'tipo' ? nuevoTipo : nuevaUbicacion;
@@ -51,25 +64,33 @@ function agregarElemento(catalogo, campo) {
         return;
     }
 
-    if (texto.length > 100) {
-        error.value = 'El nombre debe tener como máximo 100 caracteres.';
+    const limite = props.real && catalogo === 'ubicaciones' ? 150 : 100;
+    if ([...texto].length > limite) {
+        error.value = `El nombre debe tener como máximo ${limite} caracteres.`;
         return;
     }
 
     const repetido = formulario.value[catalogo].some(
-        item => normalizar(item) === normalizar(texto)
+        item => normalizar(props.real ? item.nombre : item) === normalizar(texto)
     );
 
     if (repetido) {
-        error.value = 'Ese nombre ya existe en el catálogo.';
+        error.value = props.real ? 'Ese nombre ya existe. Revisa también las opciones inactivas.' : 'Ese nombre ya existe en el catálogo.';
         return;
     }
 
-    formulario.value[catalogo].push(texto);
+    if (props.real && formulario.value[catalogo].length >= 200) {
+        error.value = 'El catálogo admite hasta 200 opciones. Edita o reactiva una opción existente.';
+        return;
+    }
+    formulario.value[catalogo].push(props.real
+        ? { id: null, nombre: texto, activo: true, ...(catalogo === 'ubicaciones' ? { requiereDetalle: false } : {}) }
+        : texto);
     entrada.value = '';
 }
 
 function eliminarElemento(catalogo, indice) {
+    if (bloqueado.value) return;
     limpiarMensajes();
 
     if (formulario.value[catalogo].length === 1) {
@@ -80,7 +101,24 @@ function eliminarElemento(catalogo, indice) {
     formulario.value[catalogo].splice(indice, 1);
 }
 
+function cambiarActividad(catalogo, indice) {
+    if (bloqueado.value) return;
+    limpiarMensajes();
+    const elemento = formulario.value[catalogo][indice];
+    if (elemento.activo && formulario.value[catalogo].filter(item => item.activo).length <= 1) {
+        error.value = 'Conserva al menos una opción activa en cada catálogo.';
+        return;
+    }
+    if (elemento.id === null) formulario.value[catalogo].splice(indice, 1);
+    else elemento.activo = !elemento.activo;
+}
+
+function textoActividad(elemento) {
+    return elemento.id === null ? 'Quitar nuevo' : (elemento.activo ? 'Desactivar' : 'Reactivar');
+}
+
 function guardarConfiguracion() {
+    if (bloqueado.value) return;
     limpiarMensajes();
 
     const institucion = formulario.value.institucion.trim();
@@ -107,18 +145,60 @@ function guardarConfiguracion() {
     formulario.value.institucion = institucion;
     formulario.value.siglas = siglas;
 
+    if (props.real) {
+        for (const catalogo of ['tipos', 'ubicaciones']) {
+            const nombres = new Set();
+            if (!formulario.value[catalogo].some(item => item.activo)) {
+                error.value = 'Conserva al menos una opción activa en cada catálogo.';
+                return;
+            }
+            for (const item of formulario.value[catalogo]) {
+                item.nombre = item.nombre.trim();
+                if (!item.nombre || nombres.has(normalizar(item.nombre))) {
+                    error.value = 'Revisa los nombres vacíos o repetidos, también entre las opciones inactivas.';
+                    return;
+                }
+                nombres.add(normalizar(item.nombre));
+            }
+        }
+    }
+
+    procesando.value = true;
     emit('guardar', copiar(formulario.value), resultado => {
+        procesando.value = false;
         if (!resultado?.ok) {
             error.value = resultado?.error ?? 'No se pudo guardar la configuración.';
             return;
         }
 
-        mensaje.value =
-            'Configuración aplicada durante esta sesión de demostración.';
+        guardado.value = copiar(resultado.data ?? formulario.value);
+        formulario.value = copiar(guardado.value);
+        mensaje.value = props.real
+            ? 'Configuración guardada correctamente.'
+            : 'Configuración aplicada durante esta sesión de demostración.';
     });
 }
 
 function descartarCambios() {
+    if (bloqueado.value) return;
+    if (props.real) {
+        procesando.value = true;
+        limpiarMensajes();
+        emit('recargar', resultado => {
+            procesando.value = false;
+            if (!resultado?.ok) {
+                error.value = resultado?.error ?? 'No se pudo recargar. Tus cambios se conservaron.';
+                return;
+            }
+            restablecerFormulario(resultado.data);
+        });
+        return;
+    }
+    restablecerFormulario(props.configuracion);
+}
+
+function restablecerFormulario(datos) {
+    guardado.value = copiar(datos);
     formulario.value = copiar(guardado.value);
     nuevoTipo.value = '';
     nuevaUbicacion.value = '';
@@ -129,12 +209,19 @@ function descartarCambios() {
 </script>
 
 <template>
-    <div class="settings-page">
-        <div class="demo-notice">
+    <fieldset class="settings-page settings-fields" :disabled="bloqueado" :aria-busy="bloqueado" aria-label="Configuración de la institución">
+        <div v-if="!real" class="demo-notice">
             <strong>Modo demostración:</strong>
             al guardar, los catálogos se aplican al botón de pánico
             y las preferencias controlan los nuevos avisos de la campana.
             La configuración se pierde al recargar.
+        </div>
+        <div v-else class="demo-notice">
+            Los cambios guardados se aplican a los nuevos reportes y avisos de la institución.
+            Desactivar una opción la retira del formulario público y conserva los incidentes anteriores.
+        </div>
+        <div v-if="hayVersionNueva" class="error-message" role="status">
+            Otra persona guardó cambios en la configuración. Conserva tus ediciones antes de pulsar «Descartar y recargar».
         </div>
 
         <section class="settings-panel">
@@ -211,23 +298,28 @@ function descartarCambios() {
                     <ul class="catalog-list">
                         <li
                             v-for="(tipo, indice) in formulario.tipos"
-                            :key="tipo"
+                            :key="real ? (tipo.id ?? `nuevo-${indice}`) : tipo"
+                            :class="{ 'catalog-entry-row': real, 'catalog-inactive': real && !tipo.activo }"
                         >
-                            <span>{{ tipo }}</span>
+                            <div v-if="real" class="form-field catalog-entry">
+                                <label :for="`config-tipo-${indice}`">Tipo {{ indice + 1 }} · {{ tipo.activo ? 'Activo' : 'Inactivo' }}</label>
+                                <input :id="`config-tipo-${indice}`" v-model="tipo.nombre" type="text" maxlength="100" @input="limpiarMensajes" />
+                            </div>
+                            <span v-else>{{ tipo }}</span>
 
                             <button
                                 type="button"
                                 class="remove-button"
-                                :aria-label="`Quitar ${tipo}`"
-                                @click="eliminarElemento('tipos', indice)"
+                                :aria-label="real ? `${textoActividad(tipo)} ${tipo.nombre}` : `Quitar ${tipo}`"
+                                @click="real ? cambiarActividad('tipos', indice) : eliminarElemento('tipos', indice)"
                             >
-                                Quitar
+                                {{ real ? textoActividad(tipo) : 'Quitar' }}
                             </button>
                         </li>
                     </ul>
 
                     <small class="catalog-count">
-                        {{ formulario.tipos.length }} tipos configurados
+                        {{ real ? formulario.tipos.filter(item => item.activo).length + ' activos de ' : '' }}{{ formulario.tipos.length }} tipos configurados
                     </small>
                 </div>
             </section>
@@ -254,7 +346,7 @@ function descartarCambios() {
                                 id="nueva-ubicacion"
                                 v-model="nuevaUbicacion"
                                 type="text"
-                                maxlength="100"
+                                :maxlength="real ? 150 : 100"
                                 placeholder="Ej. Edificio D · Planta baja"
                                 required
                                 @input="limpiarMensajes"
@@ -269,23 +361,32 @@ function descartarCambios() {
                     <ul class="catalog-list">
                         <li
                             v-for="(ubicacion, indice) in formulario.ubicaciones"
-                            :key="ubicacion"
+                            :key="real ? (ubicacion.id ?? `nueva-${indice}`) : ubicacion"
+                            :class="{ 'catalog-entry-row': real, 'catalog-inactive': real && !ubicacion.activo }"
                         >
-                            <span>{{ ubicacion }}</span>
+                            <div v-if="real" class="form-field catalog-entry">
+                                <label :for="`config-ubicacion-${indice}`">Ubicación {{ indice + 1 }} · {{ ubicacion.activo ? 'Activa' : 'Inactiva' }}</label>
+                                <input :id="`config-ubicacion-${indice}`" v-model="ubicacion.nombre" type="text" maxlength="150" @input="limpiarMensajes" />
+                                <label class="detail-option">
+                                    <input v-model="ubicacion.requiereDetalle" type="checkbox" @change="limpiarMensajes" />
+                                    Pedir que se especifique el lugar
+                                </label>
+                            </div>
+                            <span v-else>{{ ubicacion }}</span>
 
                             <button
                                 type="button"
                                 class="remove-button"
-                                :aria-label="`Quitar ${ubicacion}`"
-                                @click="eliminarElemento('ubicaciones', indice)"
+                                :aria-label="real ? `${textoActividad(ubicacion)} ${ubicacion.nombre}` : `Quitar ${ubicacion}`"
+                                @click="real ? cambiarActividad('ubicaciones', indice) : eliminarElemento('ubicaciones', indice)"
                             >
-                                Quitar
+                                {{ real ? textoActividad(ubicacion) : 'Quitar' }}
                             </button>
                         </li>
                     </ul>
 
                     <small class="catalog-count">
-                        {{ formulario.ubicaciones.length }}
+                        {{ real ? formulario.ubicaciones.filter(item => item.activo).length + ' activas de ' : '' }}{{ formulario.ubicaciones.length }}
                         ubicaciones configuradas
                     </small>
                 </div>
@@ -298,8 +399,7 @@ function descartarCambios() {
                 <div>
                     <h2>Notificaciones dentro del sistema</h2>
                     <p>
-                        Preferencias previstas para la campana de avisos,
-                        según los permisos de cada rol.
+                        {{ real ? 'Estas preferencias se aplican a toda la institución y controlan los nuevos avisos de la campana. Los avisos anteriores se conservan. Web Push aún no está conectado.' : 'Preferencias previstas para la campana de avisos, según los permisos de cada rol.' }}
                     </p>
                 </div>
             </header>
@@ -372,7 +472,7 @@ function descartarCambios() {
                     class="secondary-button"
                     @click="descartarCambios"
                 >
-                    Descartar cambios
+                    {{ real ? 'Descartar y recargar' : 'Descartar cambios' }}
                 </button>
 
                 <button
@@ -380,11 +480,11 @@ function descartarCambios() {
                     class="primary-button"
                     @click="guardarConfiguracion"
                 >
-                    Guardar configuración
+                    {{ bloqueado ? 'Procesando…' : 'Guardar configuración' }}
                 </button>
             </div>
         </footer>
-    </div>
+    </fieldset>
 </template>
 
 <style scoped>
@@ -392,6 +492,41 @@ function descartarCambios() {
     display: grid;
     gap: 22px;
     color: #26364a;
+}
+
+.settings-fields {
+    display: grid;
+    gap: 22px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.catalog-entry {
+    flex: 1;
+}
+
+.catalog-inactive {
+    background: #f8fafc;
+}
+
+.detail-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    line-height: 1.6;
+}
+
+.form-field .detail-option input {
+    width: 16px;
+    height: 16px;
+    accent-color: #2563eb;
+}
+
+button:disabled {
+    opacity: .65;
+    cursor: wait;
 }
 
 .demo-notice,
@@ -645,6 +780,10 @@ input:focus-visible {
 }
 
 @media (max-width: 600px) {
+    .catalog-entry-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
     .general-fields {
         grid-template-columns: 1fr;
     }

@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 
 const props = defineProps({
+    demo: { type: Boolean, default: true },
     incidentes: {
         type: Array,
         default: () => [],
@@ -179,7 +180,7 @@ function exportarCsv() {
     const enlace = document.createElement('a');
 
     enlace.href = url;
-    enlace.download = 'SIGEI_reporte_demostracion.csv';
+    enlace.download = props.demo ? 'SIGEI_reporte_demostracion.csv' : 'SIGEI_reporte_incidentes.csv';
 
     document.body.appendChild(enlace);
     enlace.click();
@@ -191,7 +192,7 @@ function exportarCsv() {
 
 <template>
     <div class="reports-page">
-        <div class="demo-notice">
+        <div v-if="demo" class="demo-notice">
             <strong>Modo demostración:</strong>
             este reporte utiliza los mismos registros del módulo Incidentes.
             Los cambios se conservan durante la sesión y se pierden

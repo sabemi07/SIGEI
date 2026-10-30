@@ -2,6 +2,8 @@
 import { computed } from 'vue';
 
 const props = defineProps({
+    demo: { type: Boolean, default: true },
+    busy: { type: Boolean, default: false },
     configuracion: {
         type: Object,
         default: () => ({
@@ -98,12 +100,13 @@ const titulos = {
             <div class="responsable-sidebar-footer">
                 <div class="responsable-demo-badge">
                     <span aria-hidden="true"></span>
-                    Modo demostración
+                    {{ demo ? 'Modo demostración' : 'Sesión institucional' }}
                 </div>
 
                 <button
                     type="button"
                     class="responsable-logout"
+                    :disabled="busy"
                     @click="emit('logout')"
                 >
                     Cerrar sesión
@@ -126,6 +129,7 @@ const titulos = {
                     <button
                         type="button"
                         class="btn btn-outline-secondary btn-sm mobile-logout"
+                        :disabled="busy"
                         @click="emit('logout')"
                     >
                         Cerrar sesión
@@ -139,7 +143,7 @@ const titulos = {
 
                     <div class="responsable-profile-info">
                         <strong>{{ usuario?.nombre || 'Responsable' }}</strong>
-                        <span>{{ usuario?.rol || 'Responsable' }} · Demostración</span>
+                        <span>{{ usuario?.rol || 'Responsable' }} · {{ demo ? 'Demostración' : 'Cuenta institucional' }}</span>
                     </div>
                 </div>
             </header>

@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Enums\AccountRole;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -30,7 +31,29 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
+            'role' => AccountRole::Responsible,
+            'is_active' => false,
         ];
+    }
+
+    public function administrator(): static
+    {
+        return $this->state(fn (array $attributes): array => ['role' => AccountRole::Administrator]);
+    }
+
+    public function responsible(): static
+    {
+        return $this->state(fn (array $attributes): array => ['role' => AccountRole::Responsible]);
+    }
+
+    public function active(): static
+    {
+        return $this->state(fn (array $attributes): array => ['is_active' => true]);
+    }
+
+    public function inactive(): static
+    {
+        return $this->state(fn (array $attributes): array => ['is_active' => false]);
     }
 
     /**

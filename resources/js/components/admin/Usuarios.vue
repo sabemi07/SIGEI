@@ -1,12 +1,15 @@
 <script setup>
-import { computed, ref, toRef } from 'vue';
+import { computed, onBeforeUnmount, ref, toRef } from 'vue';
 
 const props = defineProps({
     usuarios: {
         type: Array,
         default: () => [],
     },
+    real: { type: Boolean, default: false },
+    saving: { type: Boolean, default: false },
 });
+const emit = defineEmits(['guardar', 'cambiar-estado']);
 
 const usuarios = toRef(props, 'usuarios');
 
@@ -28,6 +31,8 @@ function formularioVacio() {
         rol: 'Responsable',
         area: '',
         activo: true,
+        password: '',
+        password_confirmation: '',
     };
 }
 
@@ -73,6 +78,7 @@ function limpiarFiltros() {
 }
 
 function nuevoUsuario() {
+    if (props.saving) return;
     editandoId.value = null;
     formulario.value = formularioVacio();
     error.value = '';
@@ -81,6 +87,7 @@ function nuevoUsuario() {
 }
 
 function editarUsuario(usuario) {
+    if (props.saving) return;
     editandoId.value = usuario.id;
     formulario.value = {
         nombre: usuario.nombre,
@@ -88,6 +95,8 @@ function editarUsuario(usuario) {
         rol: usuario.rol,
         area: usuario.area,
         activo: usuario.activo,
+        password: '',
+        password_confirmation: '',
     };
 
     error.value = '';
@@ -96,9 +105,17 @@ function editarUsuario(usuario) {
 }
 
 function cerrarFormulario() {
+    if (props.saving) return;
     mostrarFormulario.value = false;
     error.value = '';
+    limpiarPassword();
 }
+
+function limpiarPassword() {
+    formulario.value.password = '';
+    formulario.value.password_confirmation = '';
+}
+onBeforeUnmount(limpiarPassword);
 
 function esUltimoAdministradorActivo(usuario) {
     return (
@@ -113,6 +130,7 @@ function esUltimoAdministradorActivo(usuario) {
 }
 
 function guardarUsuario() {
+    if (props.saving) return;
     error.value = '';
 
     const datos = {
@@ -145,6 +163,36 @@ function guardarUsuario() {
 
     if (correoRepetido) {
         error.value = 'Ese correo ya está registrado.';
+        return;
+    }
+
+    if (props.real) {
+        const nuevaPassword = formulario.value.password;
+        if ((editandoId.value === null || nuevaPassword) && nuevaPassword.length < 12) {
+            error.value = 'La contraseña debe tener al menos 12 caracteres.';
+            return;
+        }
+        if (new TextEncoder().encode(nuevaPassword).length > 72) {
+            error.value = 'La contraseña es demasiado larga; utiliza menos caracteres.';
+            return;
+        }
+        if (nuevaPassword !== formulario.value.password_confirmation) {
+            error.value = 'La confirmación de contraseña no coincide.';
+            return;
+        }
+        if (nuevaPassword) {
+            datos.password = nuevaPassword;
+            datos.password_confirmation = formulario.value.password_confirmation;
+        }
+        limpiarPassword();
+        emit('guardar', datos, editandoId.value, resultado => {
+            if (!resultado.ok) {
+                error.value = resultado.error;
+                return;
+            }
+            mensaje.value = 'Cuenta guardada correctamente.';
+            mostrarFormulario.value = false;
+        });
         return;
     }
 
@@ -186,6 +234,13 @@ function guardarUsuario() {
 }
 
 function cambiarEstado(usuario) {
+    if (props.saving) return;
+    if (props.real) {
+        emit('cambiar-estado', usuario, resultado => {
+            mensaje.value = resultado.ok ? 'Estado de la cuenta actualizado.' : resultado.error;
+        });
+        return;
+    }
     if (esUltimoAdministradorActivo(usuario)) {
         mensaje.value = 'No puedes desactivar al último administrador activo.';
         return;
@@ -201,10 +256,13 @@ function cambiarEstado(usuario) {
 
 <template>
     <div class="users-page">
-        <div class="demo-notice">
+        <div v-if="!real" class="demo-notice">
             <strong>Modo demostración:</strong>
             estas cuentas son ficticias y no permiten iniciar sesión.
             Los cambios se pierden al recargar la aplicación.
+        </div>
+        <div v-else class="demo-notice">
+            Las cuentas se guardan en el servidor. Los permisos y la protección del último Administrador activo se verifican en Laravel.
         </div>
 
         <section class="stats-grid" aria-label="Resumen de usuarios">
@@ -241,6 +299,7 @@ function cambiarEstado(usuario) {
                 <button
                     type="button"
                     class="primary-button"
+                    :disabled="saving"
                     @click="nuevoUsuario"
                 >
                     + Agregar usuario
@@ -332,6 +391,7 @@ function cambiarEstado(usuario) {
                                     <button
                                         type="button"
                                         class="edit-button"
+                                        :disabled="saving"
                                         :aria-label="`Editar a ${usuario.nombre}`"
                                         @click="editarUsuario(usuario)"
                                     >
@@ -341,6 +401,7 @@ function cambiarEstado(usuario) {
                                     <button
                                         type="button"
                                         class="secondary-button"
+                                        :disabled="saving"
                                         :aria-label="`${usuario.activo ? 'Desactivar' : 'Activar'} a ${usuario.nombre}`"
                                         @click="cambiarEstado(usuario)"
                                     >
@@ -396,6 +457,7 @@ function cambiarEstado(usuario) {
                     <button
                         type="button"
                         class="close-button"
+                        :disabled="saving"
                         aria-label="Cerrar formulario"
                         @click="cerrarFormulario"
                     >
@@ -403,8 +465,8 @@ function cambiarEstado(usuario) {
                     </button>
                 </header>
 
-                <form @submit.prevent="guardarUsuario">
-                    <div class="form-fields">
+                <form @submit.prevent="guardarUsuario" :aria-busy="saving">
+                    <fieldset class="form-fields" :disabled="saving">
                         <div class="form-field">
                             <label for="usuario-nombre">Nombre completo *</label>
                             <input
@@ -447,7 +509,7 @@ function cambiarEstado(usuario) {
                                 id="usuario-area"
                                 v-model="formulario.area"
                                 type="text"
-                                maxlength="100"
+                                maxlength="150"
                                 placeholder="Ej. Seguridad, Atención médica..."
                                 required
                             />
@@ -461,7 +523,18 @@ function cambiarEstado(usuario) {
                             Cuenta activa
                         </label>
 
-                        <p class="form-note">
+                        <template v-if="real">
+                            <div class="form-field">
+                                <label for="usuario-password">{{ editandoId === null ? 'Contraseña *' : 'Nueva contraseña (opcional)' }}</label>
+                                <input id="usuario-password" v-model="formulario.password" type="password" autocomplete="new-password" minlength="12" maxlength="72" :required="editandoId === null" />
+                            </div>
+                            <div class="form-field">
+                                <label for="usuario-password-confirmation">Confirmar contraseña</label>
+                                <input id="usuario-password-confirmation" v-model="formulario.password_confirmation" type="password" autocomplete="new-password" maxlength="72" :required="editandoId === null || Boolean(formulario.password)" />
+                            </div>
+                            <p class="form-note">Utiliza al menos 12 caracteres. En una edición, deja ambos campos vacíos para conservar la contraseña.</p>
+                        </template>
+                        <p v-else class="form-note">
                             En esta demostración no se crean contraseñas
                             ni credenciales de acceso reales.
                         </p>
@@ -469,19 +542,20 @@ function cambiarEstado(usuario) {
                         <div v-if="error" class="error-message" role="alert">
                             {{ error }}
                         </div>
-                    </div>
+                    </fieldset>
 
                     <footer class="dialog-footer">
                         <button
                             type="button"
                             class="secondary-button"
+                            :disabled="saving"
                             @click="cerrarFormulario"
                         >
                             Cancelar
                         </button>
 
-                        <button type="submit" class="primary-button">
-                            {{ editandoId !== null ? 'Guardar cambios' : 'Agregar usuario' }}
+                        <button type="submit" class="primary-button" :disabled="saving">
+                            {{ saving ? 'Guardando…' : editandoId !== null ? 'Guardar cambios' : 'Agregar usuario' }}
                         </button>
                     </footer>
                 </form>
@@ -491,6 +565,12 @@ function cambiarEstado(usuario) {
 </template>
 
 <style scoped>
+fieldset.form-fields {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
 .users-page {
     display: grid;
     gap: 22px;

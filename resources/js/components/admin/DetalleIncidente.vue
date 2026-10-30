@@ -3,6 +3,8 @@
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
+    demo: { type: Boolean, default: true },
+    saving: { type: Boolean, default: false },
     incidente: {
         type: Object,
         default: null,
@@ -55,7 +57,7 @@ watch(
                 ...nuevoIncidente,
                 responsableId: nuevoIncidente.responsableId ?? '',
                 prioridad: nuevoIncidente.prioridad ?? 'Por evaluar',
-                observaciones: nuevoIncidente.observaciones ?? '',
+                observaciones: props.demo ? (nuevoIncidente.observaciones ?? '') : '',
             }
             : null;
 
@@ -74,6 +76,7 @@ const estadosDisponibles = computed(() => {
     const posicion = estados.indexOf(actual);
 
     if (posicion === -1) return [];
+    if (!props.demo) return actual === 'Atendida' ? ['Atendida', 'Cerrada'] : [actual];
 
     // Permite conservar el estado o avanzar al siguiente.
     return estados.slice(posicion, posicion + 2);
@@ -87,7 +90,7 @@ function marcarCambio() {
 function guardarSeguimiento() {
     const incidente = incidenteSeleccionado.value;
 
-    if (!incidente || soloLectura.value) return;
+    if (!incidente || soloLectura.value || props.saving) return;
 
     mensajeGuardado.value = false;
     error.value = '';
@@ -99,6 +102,23 @@ function guardarSeguimiento() {
 
     if (!prioridades.includes(incidente.prioridad)) {
         error.value = 'Selecciona una prioridad válida.';
+        return;
+    }
+
+    if (!props.demo) {
+        if (incidente.estado === 'Cerrada' && incidente.prioridad !== props.incidente.prioridad) {
+            error.value = 'Guarda primero el cambio de prioridad manteniendo el estado Atendida; después podrás cerrar el caso.';
+            return;
+        }
+        emit('guardar', {
+            ...incidente,
+            responsableId: incidente.responsableId || null,
+            observaciones: incidente.observaciones.trim(),
+        }, resultado => {
+            if (!resultado?.ok) { error.value = resultado?.error ?? 'No se pudo guardar el caso.'; return; }
+            incidenteSeleccionado.value = { ...resultado.data, responsableId: resultado.data.responsableId ?? '', observaciones: '' };
+            mensajeGuardado.value = true;
+        });
         return;
     }
 
@@ -158,13 +178,14 @@ function guardarSeguimiento() {
 }
 
 function cerrarDetalle() {
+    if (props.saving) return;
     emit('volver');
 }
 </script>
 
 <template>
     <div class="incidents-page">
-        <div class="demo-notice">
+        <div v-if="demo" class="demo-notice">
             <span class="notice-icon">i</span>
             <span>
                 <strong>Modo demostración:</strong>
@@ -248,7 +269,7 @@ function cerrarDetalle() {
                         <select
                             id="responsable"
                             v-model="incidenteSeleccionado.responsableId"
-                            :disabled="soloLectura"
+                            :disabled="soloLectura || saving || (!demo && props.incidente?.estado === 'Atendida')"
                             @change="cambiarResponsable"
                         >
                             <option value="">
@@ -293,7 +314,7 @@ function cerrarDetalle() {
                         <select
                             id="prioridad-incidente"
                             v-model="incidenteSeleccionado.prioridad"
-                            :disabled="soloLectura"
+                            :disabled="soloLectura || saving"
                             @change="marcarCambio"
                         >
                             <option
@@ -311,7 +332,7 @@ function cerrarDetalle() {
                         <select
                             id="estado-incidente"
                             v-model="incidenteSeleccionado.estado"
-                            :disabled="soloLectura"
+                            :disabled="soloLectura || saving"
                             @change="marcarCambio"
                         >
                             <option
@@ -331,11 +352,20 @@ function cerrarDetalle() {
                             v-model="incidenteSeleccionado.observaciones"
                             rows="4"
                             maxlength="2000"
-                            :disabled="soloLectura"
+                            :disabled="soloLectura || saving"
                             placeholder="Describe las acciones realizadas o pendientes..."
                             @input="marcarCambio"
                         ></textarea>
                     </div>
+                    <section v-if="!demo && props.incidente?.seguimientos?.length" class="description-box">
+                        <h4 class="section-label">Historial de seguimiento</h4>
+                        <ol>
+                            <li v-for="registro in props.incidente.seguimientos" :key="registro.id">
+                                <strong>{{ registro.estado }}</strong> · {{ registro.fecha }} · {{ registro.autor }}
+                                <p>{{ registro.observacion }}</p>
+                            </li>
+                        </ol>
+                    </section>
                     <div v-if="soloLectura" class="readonly-message">
                         Este incidente está cerrado y solo se puede consultar.
                     </div>
@@ -348,21 +378,22 @@ function cerrarDetalle() {
                         class="success-message"
                         role="status"
                     >
-                        ✓ Seguimiento actualizado durante esta sesión de demostración.
+                        ✓ {{ demo ? 'Seguimiento actualizado durante esta sesión de demostración.' : 'Cambios guardados en el sistema.' }}
                     </div>
                 </div>
 
                 <footer class="modal-footer">
                     <button
                         v-if="!soloLectura"
+                        :disabled="saving"
                         type="button"
                         class="save-button"
                         @click="guardarSeguimiento"
                     >
-                        Guardar seguimiento
+                        {{ !demo && incidenteSeleccionado.estado === 'Cerrada' ? 'Cerrar incidente' : (saving ? 'Guardando…' : 'Guardar seguimiento') }}
                     </button>
 
-                    <button class="save-button" @click="guardarSeguimiento">
+                    <button v-if="demo" class="save-button" @click="guardarSeguimiento">
                         Guardar seguimiento
                     </button>
                 </footer>

@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
+    demo: { type: Boolean, default: true },
+    saving: { type: Boolean, default: false },
     incidentes: {
         type: Array,
         default: () => [],
@@ -52,7 +54,7 @@ const asignadas = computed(() => {
 
     return props.incidentes.filter(item =>
         item.responsableId === props.usuario.id &&
-        ['Pendiente', 'Recibida', 'En atención'].includes(item.estado)
+        (!props.demo || ['Pendiente', 'Recibida', 'En atención'].includes(item.estado))
     );
 });
 
@@ -67,7 +69,7 @@ const indicadores = computed(() => [
     {
         titulo: 'Pendientes',
         total: asignadas.value.filter(
-            item => item.estado === 'Pendiente'
+            item => props.demo ? item.estado === 'Pendiente' : !item.recepcionConfirmadaEn && !['Atendida', 'Cerrada'].includes(item.estado)
         ).length,
         descripcion: 'Pendientes de recepción',
         simbolo: '◷',
@@ -147,7 +149,8 @@ function abrirDetalle(alerta) {
     errorSeguimiento.value = '';
 }
 
-function enviarCambio(estado, texto) {
+function enviarCambio(estado, texto, accion = 'seguir') {
+    if (props.saving) return;
     const alerta = alertaSeleccionada.value;
 
     if (!alerta) return;
@@ -159,6 +162,8 @@ function enviarCambio(estado, texto) {
         'guardar',
         {
             folio: alerta.folio,
+            version: alerta.version,
+            accion,
             estado,
             observacion: texto,
         },
@@ -169,24 +174,26 @@ function enviarCambio(estado, texto) {
                 return;
             }
 
-            estadoSeguimiento.value = alerta.estado;
+            estadoSeguimiento.value = resultado.data?.estado ?? alerta.estado;
             observacion.value = '';
 
             mensajeSeguimiento.value = estado === 'Atendida'
                 ? 'Atención registrada. El caso queda pendiente de cierre por el Administrador.'
                 : estado === 'Recibida'
-                  ? 'Recepción confirmada en esta demostración.'
+                  ? (props.demo ? 'Recepción confirmada en esta demostración.' : 'Recepción confirmada y guardada.')
                   : 'Seguimiento registrado y compartido con el Administrador.';
         }
     );
 }
 
 function confirmarRecepcion() {
-    if (alertaSeleccionada.value?.estado !== 'Pendiente') return;
+    if (props.saving || !alertaSeleccionada.value) return;
+    if (props.demo ? alertaSeleccionada.value.estado !== 'Pendiente' : !alertaSeleccionada.value.permisos?.confirmarRecepcion) return;
 
     enviarCambio(
         'Recibida',
-        'El Responsable confirmó la recepción del incidente.'
+        'El Responsable confirmó la recepción del incidente.',
+        'recibir'
     );
 }
 
@@ -223,7 +230,7 @@ watch(
 
 <template>
     <div class="asignadas-page">
-        <div class="demo-notice">
+        <div v-if="demo" class="demo-notice">
             <strong>Modo demostración:</strong>
             estás consultando las asignaciones de
             {{ usuario?.nombre || 'tu cuenta' }}.
@@ -283,6 +290,8 @@ watch(
                     <option>Pendiente</option>
                     <option>Recibida</option>
                     <option>En atención</option>
+                    <option v-if="!demo">Atendida</option>
+                    <option v-if="!demo">Cerrada</option>
                 </select>
 
                 <select
@@ -309,7 +318,7 @@ watch(
             <div class="table-responsive">
                 <table class="alerts-table">
                     <caption class="visually-hidden">
-                        Alertas activas asignadas al responsable de demostración
+                        {{ demo ? 'Alertas activas asignadas al responsable de demostración' : 'Casos asignados a tu cuenta' }}
                     </caption>
 
                     <thead>
@@ -471,7 +480,7 @@ watch(
                         </div>
 
                         <div
-                            v-else-if="alertaSeleccionada.estado === 'Pendiente'"
+                            v-else-if="demo ? alertaSeleccionada.estado === 'Pendiente' : alertaSeleccionada.permisos?.confirmarRecepcion"
                             class="d-grid gap-2"
                         >
                             <p class="small text-secondary mb-0">
@@ -481,6 +490,7 @@ watch(
                             <button
                                 type="button"
                                 class="btn btn-primary btn-sm"
+                                :disabled="saving"
                                 @click="confirmarRecepcion"
                             >
                                 Confirmar recepción
@@ -501,6 +511,7 @@ watch(
                                     id="estado-seguimiento"
                                     v-model="estadoSeguimiento"
                                     class="form-select"
+                                    :disabled="saving"
                                 >
                                     <option
                                         v-for="estado in estadosDisponibles"
@@ -523,6 +534,7 @@ watch(
                                     class="form-control"
                                     rows="4"
                                     maxlength="1000"
+                                    :disabled="saving"
                                     placeholder="Describe la revisión o el apoyo realizado..."
                                     aria-describedby="observacion-ayuda"
                                     required
@@ -532,16 +544,16 @@ watch(
                                     id="observacion-ayuda"
                                     class="d-block text-secondary mt-2"
                                 >
-                                    Utiliza información ficticia para esta demostración.
+                                    {{ demo ? 'Utiliza información ficticia para esta demostración.' : 'Las observaciones se guardan como seguimiento interno y no se muestran al reportante.' }}
                                 </small>
                             </div>
 
                             <div class="seguimiento-actions">
                                 <small>
-                                    Seguimiento compartido durante esta sesión de demostración.
+                                    {{ demo ? 'Seguimiento compartido durante esta sesión de demostración.' : 'El seguimiento se guardará en el sistema.' }}
                                 </small>
 
-                                <button type="submit" class="btn btn-primary btn-sm">
+                                <button type="submit" class="btn btn-primary btn-sm" :disabled="saving">
                                     Registrar seguimiento
                                 </button>
                             </div>

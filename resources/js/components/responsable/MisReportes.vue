@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
+    demo: { type: Boolean, default: true },
     incidentes: {
         type: Array,
         default: () => [],
@@ -143,7 +144,7 @@ watch(
 
 <template>
     <div class="mis-reportes-page">
-        <div class="demo-notice">
+        <div v-if="demo" class="demo-notice">
             <strong>Modo demostración:</strong>
             aquí aparecen los incidentes registrados por
             {{ usuario?.nombre || 'tu cuenta' }}.
@@ -209,7 +210,7 @@ watch(
             <div class="table-responsive">
                 <table class="reports-table">
                     <caption class="visually-hidden">
-                        Reportes personales del responsable de demostración
+                        {{ demo ? 'Reportes personales del responsable de demostración' : 'Reportes creados por tu cuenta' }}
                     </caption>
 
                     <thead>

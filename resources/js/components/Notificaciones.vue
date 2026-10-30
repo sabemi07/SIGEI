@@ -2,13 +2,15 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 const props = defineProps({
+    real: { type: Boolean, default: false },
+    pushState: { type: Object, default: () => ({ busy: false, bound: false, canLink: false, message: 'Comprobando el dispositivo…', error: '' }) },
     notificaciones: {
         type: Array,
         default: () => [],
     },
 });
 
-const emit = defineEmits(['abrir', 'leer', 'leer-todas']);
+const emit = defineEmits(['abrir', 'leer', 'leer-todas', 'vincular', 'desvincular', 'revisar-dispositivo']);
 
 const contenedor = ref(null);
 const botonCampana = ref(null);
@@ -48,6 +50,7 @@ const textoPermiso = computed(() =>
 );
 
 function revisarPermisoDispositivo() {
+    if (props.real) return;
     if (typeof window === 'undefined') return;
 
     if (!window.isSecureContext) {
@@ -259,6 +262,19 @@ onBeforeUnmount(() => {
 
             <section class="device-settings" aria-labelledby="titulo-avisos-dispositivo">
                 <h3 id="titulo-avisos-dispositivo">Avisos en este dispositivo</h3>
+                <template v-if="real">
+                    <p role="status">{{ pushState.message }}</p>
+                    <button v-if="pushState.bound" type="button" class="device-permission-button" :disabled="pushState.busy" @click="emit('desvincular')">
+                        {{ pushState.busy ? 'Procesando…' : 'Desvincular este dispositivo' }}
+                    </button>
+                    <button v-else-if="pushState.canLink" type="button" class="device-permission-button" :disabled="pushState.busy" @click="emit('vincular')">
+                        {{ pushState.busy ? 'Vinculando…' : 'Vincular este dispositivo con mi cuenta' }}
+                    </button>
+                    <button type="button" class="text-button" :disabled="pushState.busy" @click="emit('revisar-dispositivo')">Comprobar dispositivo</button>
+                    <p v-if="pushState.error" class="device-permission-error" role="alert">{{ pushState.error }}</p>
+                    <small>La vinculación, la entrega de un aviso, su lectura y la confirmación de recepción son comprobaciones distintas.</small>
+                </template>
+                <template v-else>
                 <p role="status">{{ textoPermiso }}</p>
 
                 <button
@@ -284,10 +300,11 @@ onBeforeUnmount(() => {
                     {{ errorPermiso }}
                 </p>
                 <small>El permiso pertenece al navegador y al sitio; no a una cuenta de SIGEI. La campana interna funciona de forma independiente.</small>
+                </template>
             </section>
 
             <footer class="notifications-footer">
-                Hasta 5 avisos recientes de esta cuenta · Demostración
+                Hasta 5 avisos recientes de esta cuenta{{ real ? '' : ' · Demostración' }}
             </footer>
         </section>
     </div>
