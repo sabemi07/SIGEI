@@ -8,6 +8,7 @@ const props = defineProps({
     },
     real: { type: Boolean, default: false },
     saving: { type: Boolean, default: false },
+    loading: { type: Boolean, default: false },
 });
 const emit = defineEmits(['guardar', 'cambiar-estado']);
 
@@ -78,7 +79,7 @@ function limpiarFiltros() {
 }
 
 function nuevoUsuario() {
-    if (props.saving) return;
+    if (props.saving || props.loading) return;
     editandoId.value = null;
     formulario.value = formularioVacio();
     error.value = '';
@@ -87,7 +88,7 @@ function nuevoUsuario() {
 }
 
 function editarUsuario(usuario) {
-    if (props.saving) return;
+    if (props.saving || props.loading) return;
     editandoId.value = usuario.id;
     formulario.value = {
         nombre: usuario.nombre,
@@ -234,7 +235,7 @@ function guardarUsuario() {
 }
 
 function cambiarEstado(usuario) {
-    if (props.saving) return;
+    if (props.saving || props.loading) return;
     if (props.real) {
         emit('cambiar-estado', usuario, resultado => {
             mensaje.value = resultado.ok ? 'Estado de la cuenta actualizado.' : resultado.error;
@@ -299,7 +300,7 @@ function cambiarEstado(usuario) {
                 <button
                     type="button"
                     class="primary-button"
-                    :disabled="saving"
+                    :disabled="saving || loading"
                     @click="nuevoUsuario"
                 >
                     + Agregar usuario
@@ -391,7 +392,7 @@ function cambiarEstado(usuario) {
                                     <button
                                         type="button"
                                         class="edit-button"
-                                        :disabled="saving"
+                                        :disabled="saving || loading"
                                         :aria-label="`Editar a ${usuario.nombre}`"
                                         @click="editarUsuario(usuario)"
                                     >
@@ -401,7 +402,7 @@ function cambiarEstado(usuario) {
                                     <button
                                         type="button"
                                         class="secondary-button"
-                                        :disabled="saving"
+                                        :disabled="saving || loading"
                                         :aria-label="`${usuario.activo ? 'Desactivar' : 'Activar'} a ${usuario.nombre}`"
                                         @click="cambiarEstado(usuario)"
                                     >

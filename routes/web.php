@@ -20,13 +20,14 @@ Route::prefix('api')->middleware([PreventApiCaching::class, IdentifyPushDevice::
     Route::post('/login', [AuthSessionController::class, 'store'])->middleware('throttle:20,1')->block();
     Route::post('/logout', [AuthSessionController::class, 'destroy'])->block();
     Route::get('/settings/public', PublicSettingsController::class);
+    Route::get('/push/notifications/{notification}', [PushSubscriptionController::class, 'notification']);
     Route::post('/incidents', [IncidentWriteController::class, 'store'])->middleware('throttle:public-incidents');
 
     Route::middleware('account.active')->group(function (): void {
         Route::get('/push', [PushSubscriptionController::class, 'show']);
         Route::post('/push', [PushSubscriptionController::class, 'store'])->middleware('throttle:20,1')->block();
         Route::delete('/push', [PushSubscriptionController::class, 'destroy'])->block();
-        Route::get('/push/notifications/{notification}', [PushSubscriptionController::class, 'notification']);
+        Route::post('/push/test', [PushSubscriptionController::class, 'test'])->middleware('throttle:push-test')->block();
         Route::get('/settings', [InstitutionSettingsController::class, 'show']);
         Route::put('/settings', [InstitutionSettingsController::class, 'update']);
         Route::get('/users', [UserController::class, 'index']);

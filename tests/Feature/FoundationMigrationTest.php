@@ -20,7 +20,8 @@ class FoundationMigrationTest extends TestCase
         $this->assertTrue(Schema::hasColumn('incidents', 'submission_key_hash'));
         $this->assertTrue(Schema::hasColumn('institution_settings', 'lock_version'));
         $this->assertTrue(Schema::hasColumn('push_subscriptions', 'binding_id'));
-        $this->artisan('migrate:rollback', ['--step' => 13, '--force' => true])->assertExitCode(0);
+        $this->assertTrue(Schema::hasTable('push_deliveries'));
+        $this->artisan('migrate:rollback', ['--step' => 14, '--force' => true])->assertExitCode(0);
 
         $this->assertTrue(Schema::hasTable('users'));
         $this->assertFalse(Schema::hasColumn('users', 'role'));

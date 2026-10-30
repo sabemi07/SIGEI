@@ -10,7 +10,7 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(['abrir', 'leer', 'leer-todas', 'vincular', 'desvincular', 'revisar-dispositivo']);
+const emit = defineEmits(['abrir', 'leer', 'leer-todas', 'vincular', 'desvincular', 'revisar-dispositivo', 'probar']);
 
 const contenedor = ref(null);
 const botonCampana = ref(null);
@@ -271,6 +271,8 @@ onBeforeUnmount(() => {
                         {{ pushState.busy ? 'Vinculando…' : 'Vincular este dispositivo con mi cuenta' }}
                     </button>
                     <button type="button" class="text-button" :disabled="pushState.busy" @click="emit('revisar-dispositivo')">Comprobar dispositivo</button>
+                    <button v-if="pushState.canTest" type="button" class="device-permission-button" :disabled="pushState.busy || pushState.testPending" @click="emit('probar')">Enviar aviso de prueba</button>
+                    <p v-if="pushState.testMessage" role="status">{{ pushState.testMessage }}</p>
                     <p v-if="pushState.error" class="device-permission-error" role="alert">{{ pushState.error }}</p>
                     <small>La vinculación, la entrega de un aviso, su lectura y la confirmación de recepción son comprobaciones distintas.</small>
                 </template>

@@ -128,6 +128,12 @@ async function desvincularDispositivo() {
     await terminarOperacion();
 }
 
+async function probarNotificaciones() {
+    await clientePush.sendTest();
+    if (usuario.value) await actualizarPanel();
+    await terminarOperacion();
+}
+
 function olvidarAvisoPendiente() {
     avisoPendiente.value = null;
     const url = new URL(window.location.href);
@@ -176,7 +182,7 @@ async function revisarSesion() {
         await cargarConfiguracionPublica();
         await clientePush.refresh();
         if (pantalla.value === 'panel' && usuario.value) {
-            if (usuario.value.rol === 'Administrador' && vistaAdmin.value === 'usuarios') await cargarUsuarios();
+            if (usuario.value.rol === 'Administrador' && vistaAdmin.value === 'usuarios') await cargarUsuarios({ silenciosa: true });
             if (usuario.value.rol === 'Administrador' && vistaAdmin.value === 'configuracion') await cargarConfiguracion(null, { silenciosa: true });
             await actualizarPanel();
         }
@@ -233,17 +239,17 @@ async function cerrarSesion() {
     }
 }
 
-async function cargarUsuarios() {
+async function cargarUsuarios({ silenciosa = false } = {}) {
     if (usuario.value?.rol !== 'Administrador') return;
     const version = versionSesion;
-    cargandoUsuarios.value = true;
+    if (!silenciosa) cargandoUsuarios.value = true;
     try {
         const datos = await api.request('/api/users');
         if (!desmontado && version === versionSesion && usuario.value?.rol === 'Administrador') usuarios.value = datos.data;
     } catch (error) {
         mensaje.value = error.message;
     } finally {
-        cargandoUsuarios.value = false;
+        if (!silenciosa) cargandoUsuarios.value = false;
     }
 }
 
@@ -566,6 +572,11 @@ async function abrirNotificacion(id) {
     if (ocupado.value) return;
     const solicitud = ++cargaDetalle;
     const aviso = notificaciones.value.find(item => item.id === id);
+    if (aviso?.prueba) {
+        await marcarLeida(id);
+        mensaje.value = 'Abriste un aviso de prueba de esta cuenta.';
+        return;
+    }
     if (!aviso?.folio) { mensaje.value = 'El caso ya no está disponible.'; return; }
     const version = versionSesion;
     const cuenta = claveCuenta(usuario.value);
@@ -653,7 +664,7 @@ onBeforeUnmount(() => {
 
     <AdminLayout v-else-if="usuario?.rol === 'Administrador'" :demo="false" :busy="ocupado" :usuario="usuario" :configuracion="configuracion" :active-view="vistaAdmin === 'detalle-incidente' ? 'incidentes' : vistaAdmin" @navigate="cambiarVistaAdmin" @logout="cerrarSesion">
         <template #notificaciones>
-            <Notificaciones real :push-state="estadoPush" :notificaciones="notificaciones" @abrir="abrirNotificacion" @leer="marcarLeida" @leer-todas="marcarTodas" @vincular="vincularDispositivo" @desvincular="desvincularDispositivo" @revisar-dispositivo="clientePush.refresh" />
+            <Notificaciones real :push-state="estadoPush" :notificaciones="notificaciones" @abrir="abrirNotificacion" @leer="marcarLeida" @leer-todas="marcarTodas" @vincular="vincularDispositivo" @desvincular="desvincularDispositivo" @revisar-dispositivo="clientePush.refresh" @probar="probarNotificaciones" />
             <button type="button" class="btn btn-outline-danger btn-sm" @click="abrirBotonPanico">Botón de pánico</button>
         </template>
         <div class="d-flex justify-content-end mb-3">
@@ -662,7 +673,7 @@ onBeforeUnmount(() => {
         <div v-if="mensaje" class="alert alert-info" role="status">{{ mensaje }}</div>
         <template v-if="vistaAdmin === 'usuarios'">
             <p v-if="cargandoUsuarios" role="status">Cargando cuentas…</p>
-            <Usuarios :key="usuario.id" real :usuarios="usuarios" :saving="ocupado || cargandoUsuarios" @guardar="guardarUsuario" @cambiar-estado="cambiarEstado" />
+            <Usuarios :key="usuario.id" real :usuarios="usuarios" :saving="ocupado" :loading="cargandoUsuarios" @guardar="guardarUsuario" @cambiar-estado="cambiarEstado" />
         </template>
         <DetalleIncidente v-else-if="vistaAdmin === 'detalle-incidente' && seleccionado" :demo="false" :saving="guardando" :incidente="seleccionado" :usuarios="responsables" @guardar="guardarGestion" @volver="volverDeDetalle" />
         <template v-else-if="vistaAdmin === 'configuracion'">
@@ -680,7 +691,7 @@ onBeforeUnmount(() => {
 
     <ResponsableLayout v-else-if="usuario?.rol === 'Responsable'" :demo="false" :busy="ocupado" :usuario="usuario" :configuracion="configuracion" :active-view="vistaResponsable" @navigate="cambiarVistaResponsable" @logout="cerrarSesion" @reportar="abrirBotonPanico">
         <template #notificaciones>
-            <Notificaciones real :push-state="estadoPush" :notificaciones="notificaciones" @abrir="abrirNotificacion" @leer="marcarLeida" @leer-todas="marcarTodas" @vincular="vincularDispositivo" @desvincular="desvincularDispositivo" @revisar-dispositivo="clientePush.refresh" />
+            <Notificaciones real :push-state="estadoPush" :notificaciones="notificaciones" @abrir="abrirNotificacion" @leer="marcarLeida" @leer-todas="marcarTodas" @vincular="vincularDispositivo" @desvincular="desvincularDispositivo" @revisar-dispositivo="clientePush.refresh" @probar="probarNotificaciones" />
             <button type="button" class="btn btn-outline-danger btn-sm" @click="abrirBotonPanico">Botón de pánico</button>
         </template>
         <div class="d-flex justify-content-end mb-3">

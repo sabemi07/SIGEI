@@ -397,9 +397,9 @@ function restablecerFormulario(datos) {
             <header class="panel-heading">
                 <span class="section-icon">♧</span>
                 <div>
-                    <h2>Notificaciones dentro del sistema</h2>
+                    <h2>{{ real ? 'Preferencias de avisos' : 'Notificaciones dentro del sistema' }}</h2>
                     <p>
-                        {{ real ? 'Estas preferencias se aplican a toda la institución y controlan los nuevos avisos de la campana. Los avisos anteriores se conservan. Web Push aún no está conectado.' : 'Preferencias previstas para la campana de avisos, según los permisos de cada rol.' }}
+                        {{ real ? 'Estas preferencias se aplican a toda la institución y controlan los nuevos avisos de la campana y los envíos Web Push a dispositivos vinculados. Los avisos anteriores se conservan.' : 'Preferencias previstas para la campana de avisos, según los permisos de cada rol.' }}
                     </p>
                 </div>
             </header>

@@ -7,7 +7,7 @@ const script = readFileSync(new URL('../../public/sigei-sw.js', import.meta.url)
 const id = '12345678-1234-4234-8234-123456789abc';
 const binding = 'aaaaaaaa-1234-4234-8234-123456789abc';
 
-function worker(status = 200) {
+function worker(status = 200, isTest = false) {
     const handlers = new Map();
     const calls = [];
     const shown = [];
@@ -20,7 +20,7 @@ function worker(status = 200) {
     };
     runInNewContext(script, { self: scope, URL, fetch: async (path, options) => {
         calls.push({ path, ...options });
-        return { ok: status === 200, json: async () => ({ id, title: 'Private text', body: 'Private details' }) };
+        return { ok: status === 200, json: async () => ({ id, is_test: isTest, title: 'Private text', body: 'Private details' }) };
     } });
     async function dispatch(type, extra) {
         let pending;
@@ -30,7 +30,7 @@ function worker(status = 200) {
     return { handlers, calls, shown, opened, dispatch };
 }
 
-test('the worker verifies the current server session and binding before showing a generic notice', async () => {
+test('the worker verifies the current device binding with the server before showing a generic notice', async () => {
     const w = worker();
     await w.dispatch('push', { data: { json: () => ({ notification_id: id, binding_id: binding }) } });
     assert.equal(w.calls[0].credentials, 'same-origin');
@@ -42,13 +42,20 @@ test('the worker verifies the current server session and binding before showing 
     assert.equal(w.calls[0].method, undefined);
 });
 
-test('invalid payloads and revoked or expired sessions cannot show a notice', async () => {
+test('invalid payloads and revoked bindings cannot show a notice', async () => {
     const invalid = worker();
     await invalid.dispatch('push', { data: { json: () => ({ notification_id: '../../secret', binding_id: binding }) } });
     assert.equal(invalid.calls.length, 0);
     const revoked = worker(404);
     await revoked.dispatch('push', { data: { json: () => ({ notification_id: id, binding_id: binding }) } });
     assert.equal(revoked.shown.length, 0);
+});
+
+test('a test notification is explicitly identified without using arbitrary provider text', async () => {
+    const w = worker(200, true);
+    await w.dispatch('push', { data: { json: () => ({ notification_id: id, binding_id: binding }) } });
+    assert.match(w.shown[0].title, /Prueba de notificaciones/);
+    assert.equal(w.shown[0].body.includes('Private'), false);
 });
 
 test('notification clicks can only open a same-origin path built from an opaque notification id', async () => {

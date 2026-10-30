@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Http\Middleware\IdentifyPushDevice;
+use App\Models\InternalNotification;
+use App\Services\WebPushService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,7 +18,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(WebPushService::class, fn (): WebPushService => new WebPushService);
     }
 
     /**
@@ -23,6 +26,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        InternalNotification::created(function (InternalNotification $notification): void {
+            app(WebPushService::class)->queueNotification($notification);
+        });
+
+        RateLimiter::for('push-test', fn (Request $request): Limit => Limit::perMinute(3)
+            ->by('push-test:'.($request->user()?->id ?? hash('sha256', (string) $request->ip())).':'.$request->cookie(IdentifyPushDevice::COOKIE)));
         RateLimiter::for('public-incidents', function (Request $request): array {
             $response = fn (Request $request, array $headers): JsonResponse => response()->json([
                 'message' => 'Se alcanzó el límite temporal de reportes. Espera el tiempo indicado antes de reintentar.',

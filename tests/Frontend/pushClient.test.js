@@ -5,13 +5,14 @@ import { createPushClient, decodeApplicationKey } from '../../resources/js/pushC
 
 const key = Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 7)]).toString('base64url');
 
-function fixture({ permission = 'default', bound = false, requestOverride } = {}) {
+function fixture({ permission = 'default', bound = false, deliveryAvailable = false, requestOverride } = {}) {
     const calls = [];
     const browserActions = [];
     let state;
     let sequence = 0;
     let subscription = null;
     let serverSubscription = null;
+    let latestTest = null;
     const makeSubscription = () => {
         const endpoint = `https://fcm.googleapis.com/test-${++sequence}`;
         const item = {
@@ -68,11 +69,13 @@ function fixture({ permission = 'default', bound = false, requestOverride } = {}
     const request = async (path, options = {}) => {
         calls.push({ path, ...options });
         if (requestOverride) return requestOverride(path, options);
-        if (options.method === 'POST') {
+        if (path === '/api/push/test' && options.method === 'POST') {
+            latestTest = { id: 99, status: 'queued' };
+        } else if (options.method === 'POST') {
             serverSubscription = { id: 1, binding_id: 'new-binding', endpoint_hash: fingerprint(options.body.endpoint) };
         }
         if (options.method === 'DELETE') serverSubscription = null;
-        return { public_key: key, subscription: serverSubscription, delivery_available: false };
+        return { public_key: key, subscription: serverSubscription, delivery_available: deliveryAvailable, latest_test: latestTest };
     };
     const client = createPushClient({ request, environment, onState: value => { state = value; } });
     client.setAccount({ id: 7, rol: 'Responsable' });
@@ -155,6 +158,31 @@ test('a failed server registration unsubscribes the newly created endpoint and n
     assert.match(f.getState().error, /network failure/);
 });
 
+test('a browser push service error explains the Brave setting and never reaches the server registration', async () => {
+    const f = fixture({ permission: 'granted' });
+    const worker = await f.environment.navigator.serviceWorker.ready;
+    worker.pushManager.subscribe = async () => { throw new DOMException('Registration failed - push service error', 'AbortError'); };
+    await f.client.refresh();
+    await f.client.link();
+    assert.equal(f.getState().bound, false);
+    assert.equal(f.getState().busy, false);
+    assert.equal(f.calls.some(call => call.method === 'POST'), false);
+    assert.match(f.getState().error, /Brave/);
+    assert.match(f.getState().error, /Use Google services for push messaging/);
+    assert.equal(f.getSubscription(), null);
+});
+
+test('unrelated browser subscription failures keep their original explanation', async () => {
+    const f = fixture({ permission: 'granted' });
+    const worker = await f.environment.navigator.serviceWorker.ready;
+    worker.pushManager.subscribe = async () => { throw new DOMException('Permission denied by the browser', 'NotAllowedError'); };
+    await f.client.refresh();
+    await f.client.link();
+    assert.equal(f.getState().bound, false);
+    assert.equal(f.getState().error, 'Permission denied by the browser');
+    assert.equal(f.calls.some(call => call.method === 'POST'), false);
+});
+
 test('server revocation precedes browser unsubscribe and failed revocation keeps the linked state', async () => {
     const f = fixture({ permission: 'granted', bound: true, requestOverride: async (_path, options) => {
         if (options.method === 'DELETE') throw new Error('revocation failed');
@@ -188,4 +216,55 @@ test('HTTP outside a secure context cannot request permission or register a devi
 test('application server keys must have the expected P-256 public key format', () => {
     assert.equal(decodeApplicationKey(key).length, 65);
     assert.throws(() => decodeApplicationKey('bad-key'));
+});
+
+test('test notifications require both a real device binding and enabled server delivery', async () => {
+    const unlinked = fixture({ permission: 'granted', deliveryAvailable: true });
+    await unlinked.client.refresh();
+    await unlinked.client.sendTest();
+    assert.equal(unlinked.calls.some(call => call.path === '/api/push/test'), false);
+    const disabled = fixture({ permission: 'granted', bound: true });
+    await disabled.client.refresh();
+    await disabled.client.sendTest();
+    assert.equal(disabled.calls.some(call => call.path === '/api/push/test'), false);
+});
+
+test('an explicit test queues only the expected account and does not claim delivery', async () => {
+    const f = fixture({ permission: 'granted', bound: true, deliveryAvailable: true });
+    await f.client.refresh();
+    await f.client.sendTest();
+    const write = f.calls.find(call => call.path === '/api/push/test');
+    assert.deepEqual(write.body, { cuenta_esperada: 7 });
+    assert.equal(f.getState().testPending, true);
+    assert.match(f.getState().testMessage, /pendiente de envío/);
+    await f.client.sendTest();
+    assert.equal(f.calls.filter(call => call.path === '/api/push/test').length, 1);
+});
+
+test('a provider acceptance is distinguished from actual device reception', async () => {
+    const f = fixture({ permission: 'granted', bound: true, requestOverride: async () => ({
+        public_key: key, delivery_available: true,
+        subscription: { id: 1, binding_id: 'binding', endpoint_hash: createHash('sha256').update('https://fcm.googleapis.com/test-1').digest('hex') },
+        latest_test: { id: 99, status: 'accepted' },
+    }) });
+    await f.client.refresh();
+    assert.equal(f.getState().testPending, false);
+    assert.match(f.getState().testMessage, /servicio.*aceptó/);
+    assert.match(f.getState().testMessage, /Comprueba si apareció/);
+});
+
+test('a late test response cannot expose its result after switching accounts', async () => {
+    let resolveTest;
+    const f = fixture({ permission: 'granted', bound: true, requestOverride: async (path, options) => {
+        if (path === '/api/push/test' && options.method === 'POST') return new Promise(resolve => { resolveTest = resolve; });
+        return { public_key: key, delivery_available: true,
+            subscription: { id: 1, binding_id: 'binding', endpoint_hash: createHash('sha256').update('https://fcm.googleapis.com/test-1').digest('hex') } };
+    } });
+    await f.client.refresh();
+    const pending = f.client.sendTest();
+    f.client.setAccount({ id: 8, rol: 'Administrador' });
+    resolveTest({ latest_test: { id: 99, status: 'accepted' } });
+    await pending;
+    assert.equal(f.getState().testMessage, '');
+    assert.equal(f.getState().bound, false);
 });

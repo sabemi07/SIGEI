@@ -65,6 +65,7 @@ class InternalNotificationController extends Controller
             'descripcion' => $notification->body,
             'fecha' => $notification->created_at->setTimezone(config('sigei.display_timezone'))->format('d/m/Y H:i'),
             'leida' => $notification->read_at !== null,
+            ...($notification->kind === 'push.test' ? ['prueba' => true] : []),
         ];
     }
 }

@@ -13,8 +13,8 @@ self.addEventListener('push', event => {
             if (!response.ok) return;
             const notice = await response.json();
             if (notice.id !== payload.notification_id) return;
-            await self.registration.showNotification('SIGEI · Aviso institucional', {
-                body: 'Abre el sistema para consultar un aviso de tu cuenta.',
+            await self.registration.showNotification(notice.is_test ? 'SIGEI · Prueba de notificaciones' : 'SIGEI · Aviso institucional', {
+                body: notice.is_test ? 'Esta es una prueba de los avisos en este dispositivo.' : 'Abre el sistema para consultar un aviso de tu cuenta.',
                 tag: `sigei-${notice.id}`, data: { id: notice.id },
             });
         } catch { /* Una sesión sin verificar o sin conexión no autoriza mostrar datos de incidentes. */ }

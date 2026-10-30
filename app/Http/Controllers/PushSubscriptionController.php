@@ -3,27 +3,32 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\SavePushSubscriptionRequest;
+use App\Http\Requests\TestPushNotificationRequest;
 use App\Models\AuditLog;
 use App\Models\Enums\AccountRole;
 use App\Models\InstitutionSetting;
 use App\Models\InternalNotification;
+use App\Models\PushDelivery;
 use App\Models\PushSubscription;
 use App\Models\User;
+use App\Services\WebPushService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 
 class PushSubscriptionController extends Controller
 {
     public function show(Request $request): JsonResponse
     {
+        $subscription = $this->currentSubscription($request);
+
         return response()->json([
             'public_key' => $this->publicKey(),
-            'delivery_available' => false,
-            'subscription' => $this->subscriptionState($this->currentSubscription($request)),
+            'delivery_available' => app(WebPushService::class)->isAvailable(),
+            'subscription' => $this->subscriptionState($subscription),
+            'latest_test' => $this->latestTest($subscription)?->summary(),
         ]);
     }
 
@@ -55,7 +60,7 @@ class PushSubscriptionController extends Controller
             $subscription->save();
             $this->audit($actor, $subscription, 'push.subscribed');
 
-            return response()->json(['subscription' => $this->subscriptionState($subscription), 'delivery_available' => false]);
+            return response()->json(['subscription' => $this->subscriptionState($subscription), 'delivery_available' => app(WebPushService::class)->isAvailable()]);
         }, 3);
     }
 
@@ -77,18 +82,54 @@ class PushSubscriptionController extends Controller
 
     public function notification(Request $request, InternalNotification $notification): JsonResponse
     {
-        $subscription = $this->currentSubscription($request);
+        $subscription = PushSubscription::query()->where('device_id', $request->attributes->get('push_device_id'))
+            ->whereNull('revoked_at')->whereNotNull('binding_id')->first();
         abort_unless($subscription !== null && hash_equals((string) $subscription->binding_id, (string) $request->header('X-SIGEI-Push-Binding'))
-            && $notification->user_id === $request->user()->id, 404);
-        $incident = $notification->incident;
-        abort_unless($incident !== null && Gate::allows('view', $incident), 404);
+            && ($request->user() === null || $request->user()->id === $subscription->user_id)
+            && app(WebPushService::class)->canNotify($subscription, $notification), 404);
 
         return response()->json([
             'id' => $notification->id,
             'title' => 'SIGEI · Aviso institucional',
             'body' => 'Abre el sistema para consultar un aviso de tu cuenta.',
             'url' => '/?aviso='.rawurlencode($notification->id),
+            'is_test' => $notification->kind === 'push.test',
         ]);
+    }
+
+    public function test(TestPushNotificationRequest $request, WebPushService $sender): JsonResponse
+    {
+        abort_unless($sender->isAvailable(), 503, 'El envío Web Push todavía no está configurado.');
+
+        return DB::transaction(function () use ($request, $sender): JsonResponse {
+            $actor = $this->lockActor($request);
+            abort_unless($request->integer('cuenta_esperada') === $actor->id, 409, 'La cuenta cambió antes de solicitar la prueba.');
+            $subscription = $this->currentSubscription($request);
+            abort_if($subscription === null, 422, 'Vincula este dispositivo antes de solicitar la prueba.');
+            $previous = $this->latestTest($subscription);
+
+            if ($previous !== null && in_array($previous->status->value, ['queued', 'sending'], true)
+                && $previous->created_at->gt(now('UTC')->subSeconds(config('sigei.push.ttl')))) {
+                return response()->json(['latest_test' => $previous->summary()], 202);
+            }
+
+            $notification = InternalNotification::query()->create([
+                'user_id' => $actor->id, 'kind' => 'push.test', 'title' => 'Prueba de notificaciones',
+                'body' => 'Prueba solicitada desde esta cuenta. No corresponde a un incidente.',
+            ]);
+            $sender->queueNotification($notification, $subscription->id);
+            $delivery = PushDelivery::query()->where('notification_id', $notification->id)->sole();
+            AuditLog::query()->create(['actor_id' => $actor->id, 'action' => 'push.test_requested', 'subject_type' => 'push_delivery', 'subject_id' => $delivery->id]);
+
+            return response()->json(['latest_test' => $delivery->summary()], 202);
+        }, 3);
+    }
+
+    private function latestTest(?PushSubscription $subscription): ?PushDelivery
+    {
+        return $subscription === null ? null : PushDelivery::query()->where('subscription_id', $subscription->id)
+            ->where('binding_id', $subscription->binding_id)->whereHas('notification', fn ($query) => $query->where('kind', 'push.test'))
+            ->latest('id')->first();
     }
 
     private function currentSubscription(Request $request): ?PushSubscription
@@ -113,13 +154,7 @@ class PushSubscriptionController extends Controller
 
     private function publicKey(): ?string
     {
-        $path = config('sigei.push.key_file');
-        $keys = is_file($path) ? json_decode(file_get_contents($path), true) : null;
-
-        return is_array($keys) && isset($keys['private_key']) && is_string($keys['private_key'])
-            && preg_match('/^[A-Za-z0-9_-]{43}$/D', $keys['private_key']) === 1
-            && isset($keys['public_key']) && is_string($keys['public_key'])
-            && preg_match('/^[A-Za-z0-9_-]{87}$/D', $keys['public_key']) === 1 ? $keys['public_key'] : null;
+        return app(WebPushService::class)->keys()['public_key'] ?? null;
     }
 
     /** @return array{id: int, binding_id: string, endpoint_hash: string}|null */

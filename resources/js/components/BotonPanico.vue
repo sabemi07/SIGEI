@@ -309,7 +309,7 @@ function reiniciar() {
 
         <footer class="panic-footer">
             {{ configuracion.siglas }} · {{ demo ? 'Prototipo de botón de pánico' : 'Gestión de emergencias' }}
-            <span>{{ demo ? 'Interfaz de demostración' : 'El reporte se guarda en el sistema. Los avisos Web Push aún no están conectados.' }}</span>
+            <span>{{ demo ? 'Interfaz de demostración' : 'El reporte se guarda en el sistema. El personal asignado confirma la recepción del caso.' }}</span>
         </footer>
 
         <!-- Confirmación breve -->

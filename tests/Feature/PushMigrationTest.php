@@ -17,7 +17,7 @@ class PushMigrationTest extends TestCase
     {
         $user = User::factory()->create();
         $other = User::factory()->create();
-        $this->artisan('migrate:rollback', ['--step' => 1, '--force' => true])->assertSuccessful();
+        $this->artisan('migrate:rollback', ['--step' => 2, '--force' => true])->assertSuccessful();
         $device = (string) Str::uuid();
 
         foreach ([$user, $other] as $index => $account) {
@@ -39,7 +39,7 @@ class PushMigrationTest extends TestCase
         $this->assertSame(2, PushSubscription::query()->whereNotNull('revoked_at')->count());
         $this->assertNull($subscription->binding_id);
         $this->assertNotSame('legacy-auth-token', DB::table('push_subscriptions')->where('id', $subscription->id)->value('auth_token'));
-        $this->artisan('migrate:rollback', ['--step' => 1, '--force' => true])->assertSuccessful();
+        $this->artisan('migrate:rollback', ['--step' => 2, '--force' => true])->assertSuccessful();
         $this->assertSame('legacy-auth-token', DB::table('push_subscriptions')->where('id', $subscription->id)->value('auth_token'));
         $this->assertSame('https://fcm.googleapis.com/legacy-0', DB::table('push_subscriptions')->where('id', $subscription->id)->value('endpoint'));
         $this->artisan('migrate', ['--force' => true])->assertSuccessful();
