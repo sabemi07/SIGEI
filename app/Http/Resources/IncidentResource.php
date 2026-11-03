@@ -15,6 +15,8 @@ class IncidentResource extends IncidentReceiptResource
         $this->resource->loadMissing(['currentAssignment.assignee', 'reporter', 'updates.author']);
         $assignment = $this->currentAssignment;
         $reporterOnly = $request->query('scope') === 'mine';
+        $deleted = $this->resource->trashed();
+        $canModify = ! $reporterOnly && ! $deleted;
         $internal = ! $reporterOnly && $request->user() !== null
             && Gate::forUser($request->user())->allows('viewInternal', $this->resource);
         $updates = $this->updates->sortBy('id')->values();
@@ -46,15 +48,21 @@ class IncidentResource extends IncidentReceiptResource
                 return $data;
             })->all(),
             'permisos' => [
-                'gestionar' => ! $reporterOnly && $gate->allows('assign', $this->resource),
-                'confirmarRecepcion' => ! $reporterOnly && $gate->allows('confirmReceipt', $this->resource),
-                'seguimiento' => ! $reporterOnly && $gate->allows('followUp', $this->resource)
+                'gestionar' => $canModify && $gate->allows('assign', $this->resource),
+                'confirmarRecepcion' => $canModify && $gate->allows('confirmReceipt', $this->resource),
+                'seguimiento' => $canModify && $gate->allows('followUp', $this->resource)
                     && $assignment?->received_at !== null
                     && in_array($this->status, [IncidentStatus::Received, IncidentStatus::InProgress], true),
-                'cerrar' => ! $reporterOnly && $gate->allows('close', $this->resource),
+                'cerrar' => $canModify && $gate->allows('close', $this->resource),
+                'eliminar' => $canModify && $gate->allows('delete', $this->resource),
                 'verInterno' => $internal,
             ],
         ];
+
+        if ($deleted) {
+            $data['eliminadoEn'] = $this->deleted_at->setTimezone(config('sigei.display_timezone'))->format('d/m/Y H:i');
+            $data['eliminadoPor'] = $this->deletionAudit?->actor?->name;
+        }
 
         if ($internal) {
             $data['observaciones'] = $updates->last()?->internal_note ?? '';

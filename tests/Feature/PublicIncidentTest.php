@@ -50,6 +50,7 @@ class PublicIncidentTest extends TestCase
         $incident = Incident::query()->sole();
 
         $this->assertSame($incident->folio, $response->json('data.folio'));
+        $this->assertSame($incident->folio_corto, $response->json('data.folioCorto'));
         $this->assertMatchesRegularExpression('/^SIG-[0-9A-HJKMNP-TV-Z]{26}$/', $incident->folio);
         $this->assertSame(IncidentStatus::Pending, $incident->status);
         $this->assertSame(IncidentPriority::Unevaluated, $incident->priority);
@@ -120,6 +121,7 @@ class PublicIncidentTest extends TestCase
     {
         return [
             'folio' => ['folio', 'SIG-CLIENTE'],
+            'folio corto' => ['folioCorto', 'SIG-02AF58'],
             'estado' => ['estado', 'Cerrada'],
             'prioridad' => ['prioridad', 'Alta'],
             'responsable' => ['responsable_id', 42],
@@ -153,12 +155,27 @@ class PublicIncidentTest extends TestCase
         $this->getJson('/api/session');
         $this->withCookie(config('session.cookie'), session()->getId())->withCredentials();
         $data = $this->reportData();
-        $folio = $this->postJson('/api/incidents', $data)->assertCreated()->json('data.folio');
-        $this->postJson('/api/incidents', $data)->assertCreated()->assertJsonPath('data.folio', $folio);
+        $receipt = $this->postJson('/api/incidents', $data)->assertCreated()->json('data');
+        $this->postJson('/api/incidents', $data)->assertCreated()
+            ->assertJsonPath('data.folio', $receipt['folio'])
+            ->assertJsonPath('data.folioCorto', $receipt['folioCorto']);
 
         $this->assertDatabaseCount('incidents', 1);
         $this->assertDatabaseCount('audit_logs', 1);
         $this->assertSame(1, InternalNotification::query()->count());
+    }
+
+    public function test_replaying_a_deleted_submission_does_not_recreate_it_or_disclose_its_receipt(): void
+    {
+        $administrator = User::factory()->administrator()->active()->create();
+        $this->actingAs($administrator)->withSession(['account_auth_version' => $administrator->auth_version]);
+        $data = $this->reportData();
+        $folio = $this->postJson('/api/incidents', $data)->assertCreated()->json('data.folio');
+        $this->deleteJson('/api/incidents/'.$folio, ['version' => 0])->assertNoContent();
+
+        $this->postJson('/api/incidents', $data)->assertConflict()->assertJsonMissingPath('data');
+        $this->assertDatabaseCount('incidents', 1);
+        $this->assertSoftDeleted('incidents', ['folio' => $folio]);
     }
 
     public function test_replaying_a_request_with_changed_content_is_a_conflict_without_receipt_disclosure(): void

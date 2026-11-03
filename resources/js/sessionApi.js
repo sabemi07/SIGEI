@@ -9,13 +9,14 @@ export class ApiError extends Error {
 export function createSessionApi({ onUnauthorized, onCsrfExpired, onForbidden } = {}) {
     let csrfToken = '';
 
-    async function request(path, { method = 'GET', body } = {}) {
+    async function request(path, { method = 'GET', body, signal } = {}) {
         let response;
         try {
             response = await fetch(path, {
                 method,
                 credentials: 'same-origin',
                 cache: 'no-store',
+                signal,
                 headers: {
                     Accept: 'application/json',
                     ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),

@@ -1,5 +1,6 @@
 
 <script setup>
+import { matchesIncidentSearch } from '../../incidentClient.js';
 import { computed, ref, toRef } from 'vue';
 const props = defineProps({
     demo: { type: Boolean, default: true },
@@ -7,9 +8,14 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    archivo: {
+        type: Object,
+        default: () => ({ incidentes: [] }),
+    },
 });
 
 const incidentes = toRef(props, 'incidentes');
+const mostrarEliminados = defineModel('mostrarEliminados', { type: Boolean, default: false });
 
 const emit = defineEmits(['gestionar']);
 
@@ -17,7 +23,10 @@ const busqueda = ref('');
 const filtroEstado = ref('Todos');
 const filtroPrioridad = ref('Todas');
 
-const vistaSeleccionada = ref('activos');
+const vistaRegistrados = ref('activos');
+const vistaSeleccionada = computed(() => mostrarEliminados.value ? 'eliminados' : vistaRegistrados.value);
+const registros = computed(() => mostrarEliminados.value ? props.archivo.incidentes : incidentes.value);
+const archivoPendiente = computed(() => mostrarEliminados.value && (props.archivo.cargando || props.archivo.error));
 
 const estadosActivos = ['Pendiente', 'Recibida', 'En atención'];
 
@@ -72,7 +81,8 @@ const estadosDisponibles = computed(() => {
 });
 
 function cambiarVista(vista) {
-    vistaSeleccionada.value = vista;
+    mostrarEliminados.value = vista === 'eliminados';
+    if (!mostrarEliminados.value) vistaRegistrados.value = vista;
 
     // Evita conservar un estado incompatible con la nueva vista.
     filtroEstado.value = 'Todos';
@@ -89,14 +99,8 @@ const estados = [
 ];
 
 const incidentesFiltrados = computed(() => {
-    const texto = busqueda.value.trim().toLowerCase();
-
-    return incidentes.value.filter((incidente) => {
-        const coincideTexto = [
-            incidente.folio,
-            incidente.tipo,
-            incidente.ubicacion,
-        ].some((valor) => valor.toLowerCase().includes(texto));
+    return registros.value.filter((incidente) => {
+        const coincideTexto = matchesIncidentSearch(incidente, busqueda.value);
 
         const coincideEstado =
             filtroEstado.value === 'Todos' ||
@@ -171,14 +175,15 @@ function gestionarIncidente(incidente) {
         <section class="incidents-panel">
             <header class="panel-header">
                 <div>
-                    <h2>Registro de incidentes</h2>
-                    <p>
+                    <h2>{{ mostrarEliminados ? 'Incidentes eliminados' : 'Registro de incidentes' }}</h2>
+                    <p v-if="mostrarEliminados">Consulta los casos eliminados y su historial.</p>
+                    <p v-else>
                         Gestiona las emergencias activas y consulta los casos atendidos
                         o cerrados desde una misma pantalla.
                     </p>
                 </div>
 
-                <span class="result-count">
+                <span v-if="!archivoPendiente" class="result-count">
                     {{ incidentesFiltrados.length }} resultados
                 </span>
             </header>
@@ -195,6 +200,15 @@ function gestionarIncidente(incidente) {
                     {{ vista.label }}
 
                     <span>{{ conteosVistas[vista.id] }}</span>
+                </button>
+                <button
+                    type="button"
+                    class="incident-view-button"
+                    :class="{ selected: mostrarEliminados }"
+                    :aria-pressed="mostrarEliminados"
+                    @click="cambiarVista('eliminados')"
+                >
+                    Eliminados
                 </button>
             </div>
 
@@ -218,7 +232,7 @@ function gestionarIncidente(incidente) {
                     aria-label="Filtrar por prioridad"
                 >
                     <option>Todas</option>
-                    <option>Por Evaluar</option>
+                    <option>Por evaluar</option>
                     <option>Alta</option>
                     <option>Media</option>
                     <option>Baja</option>
@@ -229,7 +243,13 @@ function gestionarIncidente(incidente) {
                 </button>
             </div>
 
-            <div class="table-responsive">
+            <p v-if="mostrarEliminados && archivo.cargando" class="px-3 pb-3 mb-0" role="status">
+                Cargando incidentes eliminados…
+            </p>
+            <p v-else-if="mostrarEliminados && archivo.error" class="alert alert-danger mx-3" role="alert">
+                {{ archivo.error }}
+            </p>
+            <div v-else class="table-responsive">
                 <table class="incidents-table">
                     <thead>
                         <tr>
@@ -237,7 +257,8 @@ function gestionarIncidente(incidente) {
                             <th>Tipo de incidente</th>
                             <th>Ubicación</th>
                             <th>Prioridad</th>
-                            <th>Estado</th>
+                            <th>{{ mostrarEliminados ? 'Estado al eliminar' : 'Estado' }}</th>
+                            <th v-if="mostrarEliminados">Eliminación</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -248,7 +269,7 @@ function gestionarIncidente(incidente) {
                             :key="incidente.folio"
                         >
                             <td>
-                                <strong class="folio">{{ incidente.folio }}</strong>
+                                <strong class="folio">{{ incidente.folioCorto ?? incidente.folio }}</strong>
                                 <small>
                                     {{ incidente.fecha }} · {{ incidente.hora }}
                                 </small>
@@ -276,28 +297,35 @@ function gestionarIncidente(incidente) {
                                 </span>
                             </td>
 
+                            <td v-if="mostrarEliminados">
+                                <strong>{{ incidente.eliminadoEn }}</strong>
+                                <small>{{ incidente.eliminadoPor ?? 'Autor sin registrar' }}</small>
+                            </td>
+
                             <td>
                                 <button
                                     class="detail-button"
                                     @click="gestionarIncidente(incidente)"
                                 >
-                                    {{ incidente.estado === 'Cerrada' ? 'Ver detalle' : 'Gestionar' }}
+                                    {{ mostrarEliminados || incidente.estado === 'Cerrada' ? 'Ver detalle' : 'Gestionar' }}
                                 </button>
                             </td>
                         </tr>
 
                         <tr v-if="incidentesFiltrados.length === 0">
-                            <td colspan="6" class="empty-state">
-                                No se encontraron incidentes con esos filtros.
+                            <td :colspan="mostrarEliminados ? 7 : 6" class="empty-state">
+                                {{ mostrarEliminados && !registros.length
+                                    ? 'Aún no hay incidentes eliminados.'
+                                    : 'No se encontraron incidentes con esos filtros.' }}
                             </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
 
-            <footer class="table-footer">
+            <footer v-if="!archivoPendiente" class="table-footer">
                 Mostrando {{ incidentesFiltrados.length }}
-                de {{ incidentes.length }} incidentes{{ demo ? ' de demostración' : '' }}.
+                de {{ registros.length }} incidentes{{ mostrarEliminados ? ' eliminados' : '' }}{{ demo ? ' de demostración' : '' }}.
             </footer>
         </section>
     </div>

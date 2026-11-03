@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Enums\IncidentPriority;
 use App\Models\Enums\IncidentStatus;
+use App\Services\IncidentFolio;
 use Database\Factories\IncidentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 use LogicException;
 
@@ -22,6 +24,8 @@ class Incident extends Model
     /** @use HasFactory<IncidentFactory> */
     use HasFactory;
 
+    use SoftDeletes;
+
     protected $dateFormat = 'Y-m-d H:i:s.u';
 
     protected $attributes = ['status' => 'Pendiente', 'priority' => 'Por evaluar', 'lock_version' => 0];
@@ -30,13 +34,14 @@ class Incident extends Model
     {
         static::creating(function (Incident $incident): void {
             $incident->folio = 'SIG-'.Str::ulid();
+            $incident->folio_corto = IncidentFolio::nextShort($incident->getConnection());
             $incident->type_name = $incident->emergencyType()->firstOrFail()->name;
             $incident->location_name = $incident->location()->firstOrFail()->name;
             $incident->reported_at ??= now('UTC');
         });
 
         static::updating(function (Incident $incident): void {
-            if ($incident->isDirty('folio')) {
+            if ($incident->isDirty(['folio', 'folio_corto'])) {
                 throw new LogicException('El folio del incidente no se puede modificar.');
             }
         });
@@ -97,5 +102,10 @@ class Incident extends Model
     public function auditLogs(): HasMany
     {
         return $this->hasMany(AuditLog::class);
+    }
+
+    public function deletionAudit(): HasOne
+    {
+        return $this->hasOne(AuditLog::class)->where('action', 'incident.deleted')->latest('id');
     }
 }

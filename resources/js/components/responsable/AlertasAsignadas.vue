@@ -1,5 +1,6 @@
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { matchesIncidentSearch } from '../../incidentClient.js';
+import { computed, nextTick, ref, watch } from 'vue';
 
 const props = defineProps({
     demo: { type: Boolean, default: true },
@@ -25,6 +26,8 @@ const filtroEstado = ref('Todos');
 const filtroPrioridad = ref('Todas');
 
 const folioSeleccionado = ref(null);
+const dialogoDetalle = ref(null);
+const campoEstadoSeguimiento = ref(null);
 const estadoSeguimiento = ref('Recibida');
 const observacion = ref('');
 const mensajeSeguimiento = ref('');
@@ -87,14 +90,8 @@ const indicadores = computed(() => [
 ]);
 
 const alertasFiltradas = computed(() => {
-    const texto = busqueda.value.trim().toLowerCase();
-
     return asignadas.value.filter(alerta => {
-        const coincideTexto = [
-            alerta.folio,
-            alerta.tipo,
-            alerta.ubicacion,
-        ].some(valor => valor.toLowerCase().includes(texto));
+        const coincideTexto = matchesIncidentSearch(alerta, busqueda.value);
 
         return coincideTexto &&
             (filtroEstado.value === 'Todos' ||
@@ -149,6 +146,10 @@ function abrirDetalle(alerta) {
     errorSeguimiento.value = '';
 }
 
+function cerrarDetalle() {
+    if (!props.saving) alertaSeleccionada.value = null;
+}
+
 function enviarCambio(estado, texto, accion = 'seguir') {
     if (props.saving) return;
     const alerta = alertaSeleccionada.value;
@@ -167,21 +168,29 @@ function enviarCambio(estado, texto, accion = 'seguir') {
             estado,
             observacion: texto,
         },
-        resultado => {
+        async resultado => {
             if (!resultado?.ok) {
                 errorSeguimiento.value =
                     resultado?.error ?? 'No se pudo guardar el seguimiento.';
                 return;
             }
 
-            estadoSeguimiento.value = resultado.data?.estado ?? alerta.estado;
             observacion.value = '';
+
+            if (accion === 'recibir') {
+                estadoSeguimiento.value = resultado.data?.estado ?? estado;
+                mensajeSeguimiento.value = props.demo
+                    ? 'Recepción confirmada en esta demostración.'
+                    : 'Recepción confirmada y guardada.';
+                await nextTick();
+                campoEstadoSeguimiento.value?.focus();
+                return;
+            }
 
             mensajeSeguimiento.value = estado === 'Atendida'
                 ? 'Atención registrada. El caso queda pendiente de cierre por el Administrador.'
-                : estado === 'Recibida'
-                  ? (props.demo ? 'Recepción confirmada en esta demostración.' : 'Recepción confirmada y guardada.')
-                  : 'Seguimiento registrado y compartido con el Administrador.';
+                : 'Seguimiento registrado y compartido con el Administrador.';
+            alertaSeleccionada.value = null;
         }
     );
 }
@@ -226,6 +235,21 @@ watch(
     },
     { immediate: true }
 );
+
+watch(
+    [dialogoDetalle, () => alertaSeleccionada.value !== null],
+    ([dialogo, mostrar]) => {
+        if (!dialogo || dialogo.open === mostrar) return;
+
+        if (mostrar) {
+            dialogo.showModal();
+        } else {
+            dialogo.close();
+            folioSeleccionado.value = null;
+        }
+    },
+    { flush: 'post' }
+);
 </script>
 
 <template>
@@ -259,6 +283,14 @@ watch(
                 </span>
             </article>
         </section>
+
+        <div
+            v-if="mensajeSeguimiento && !alertaSeleccionada"
+            class="alert alert-success small mb-0"
+            role="status"
+        >
+            {{ mensajeSeguimiento }}
+        </div>
 
         <section class="alerts-panel">
             <header class="panel-header">
@@ -338,7 +370,7 @@ watch(
                             :key="alerta.folio"
                         >
                             <td>
-                                <strong class="folio">{{ alerta.folio }}</strong>
+                                <strong class="folio">{{ alerta.folioCorto ?? alerta.folio }}</strong>
                                 <small>{{ alerta.fecha }} · {{ alerta.hora }}</small>
                             </td>
 
@@ -367,7 +399,8 @@ watch(
                                 <button
                                     type="button"
                                     class="detail-button"
-                                    :aria-label="`Ver detalle de ${alerta.folio}`"
+                                    :aria-label="`Ver detalle de ${alerta.folioCorto ?? alerta.folio}`"
+                                    aria-haspopup="dialog"
                                     :aria-expanded="
                                         alertaSeleccionada?.folio === alerta.folio
                                     "
@@ -394,23 +427,26 @@ watch(
             </footer>
         </section>
 
-        <section
+        <dialog
             id="detalle-asignada"
-            class="alerts-panel"
-            aria-label="Detalle de alerta asignada"
-            aria-live="polite"
+            ref="dialogoDetalle"
+            class="assigned-alert-dialog"
+            aria-labelledby="titulo-detalle-asignada"
+            @cancel.prevent="cerrarDetalle"
         >
             <template v-if="alertaSeleccionada">
                 <header class="panel-header">
                     <div>
-                        <h2>{{ alertaSeleccionada.folio }}</h2>
+                        <h2 id="titulo-detalle-asignada">{{ alertaSeleccionada.folioCorto ?? alertaSeleccionada.folio }}</h2>
                         <p>Detalle de la emergencia asignada</p>
                     </div>
 
                     <button
                         type="button"
                         class="btn btn-light btn-sm"
-                        @click="alertaSeleccionada = null"
+                        :disabled="saving"
+                        autofocus
+                        @click="cerrarDetalle"
                     >
                         Cerrar detalle
                     </button>
@@ -509,6 +545,7 @@ watch(
 
                                 <select
                                     id="estado-seguimiento"
+                                    ref="campoEstadoSeguimiento"
                                     v-model="estadoSeguimiento"
                                     class="form-select"
                                     :disabled="saving"
@@ -598,11 +635,7 @@ watch(
                     </section>
                 </div>
             </template>
-
-            <p v-else class="detail-placeholder">
-                Selecciona “Ver detalle” para consultar una alerta.
-            </p>
-        </section>
+        </dialog>
     </div>
 </template>
 
@@ -833,10 +866,54 @@ watch(
     font-size: 11px;
 }
 
+.assigned-alert-dialog {
+    width: min(650px, calc(100% - 32px));
+    max-height: calc(100dvh - 32px);
+    margin: auto;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    border-radius: 14px;
+    background: white;
+    color: inherit;
+    box-shadow: 0 20px 70px rgb(0 0 0 / 20%);
+}
+
+.assigned-alert-dialog[open] {
+    display: flex;
+    flex-direction: column;
+}
+
+.assigned-alert-dialog::backdrop {
+    background: rgb(15 23 42 / 55%);
+}
+
+:global(body:has(.assigned-alert-dialog[open])) {
+    overflow: hidden;
+}
+
+.assigned-alert-dialog .panel-header {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    border-bottom: 1px solid #edf1f6;
+}
+
+.assigned-alert-dialog .panel-header h2 {
+    overflow-wrap: anywhere;
+}
+
+.assigned-alert-dialog .panel-header button {
+    flex-shrink: 0;
+}
+
 .detail-body {
     display: grid;
     gap: 20px;
-    padding: 0 22px 22px;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 22px;
 }
 
 .detail-grid {
@@ -873,16 +950,11 @@ watch(
 }
 
 .description-box p,
-.detail-note,
-.detail-placeholder {
+.detail-note {
     margin: 0;
     color: #536277;
     font-size: 12px;
     line-height: 1.7;
-}
-
-.detail-placeholder {
-    padding: 22px;
 }
 
 @media (max-width: 760px) {
@@ -908,7 +980,7 @@ watch(
     }
 
     .detail-body {
-        padding: 0 18px 18px;
+        padding: 18px;
     }
 }
 .seguimiento-section {

@@ -1,6 +1,6 @@
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 
 const props = defineProps({
     demo: { type: Boolean, default: true },
@@ -15,11 +15,13 @@ const props = defineProps({
     },
 });
 
-const emit = defineEmits(['volver', 'guardar']);
+const emit = defineEmits(['volver', 'guardar', 'eliminar']);
 
 const incidenteSeleccionado = ref(null);
-const mensajeGuardado = ref(false);
 const error = ref('');
+const confirmandoEliminacion = ref(false);
+const botonEliminar = ref(null);
+const botonCancelarEliminacion = ref(null);
 
 const responsablesActivos = computed(() =>
     props.usuarios.filter(
@@ -61,15 +63,15 @@ watch(
             }
             : null;
 
-        mensajeGuardado.value = false;
         error.value = '';
+        confirmandoEliminacion.value = false;
     },
     { immediate: true }
 );
 
-const soloLectura = computed(
-    () => props.incidente?.estado === 'Cerrada'
-);
+const eliminado = computed(() => Boolean(props.incidente?.eliminadoEn));
+const soloLectura = computed(() => eliminado.value || props.incidente?.estado === 'Cerrada');
+const puedeEliminar = computed(() => !eliminado.value && (props.demo || props.incidente?.permisos?.eliminar === true));
 
 const estadosDisponibles = computed(() => {
     const actual = props.incidente?.estado;
@@ -83,8 +85,16 @@ const estadosDisponibles = computed(() => {
 });
 
 function marcarCambio() {
-    mensajeGuardado.value = false;
     error.value = '';
+}
+
+function finalizarGuardado(resultado) {
+    if (!resultado?.ok) {
+        error.value = resultado?.error ?? 'No se pudo guardar el caso.';
+        return;
+    }
+
+    emit('volver', props.demo ? 'Cambios guardados en esta demostración.' : 'Cambios guardados en el sistema.');
 }
 
 function guardarSeguimiento() {
@@ -92,7 +102,6 @@ function guardarSeguimiento() {
 
     if (!incidente || soloLectura.value || props.saving) return;
 
-    mensajeGuardado.value = false;
     error.value = '';
 
     if (!estadosDisponibles.value.includes(incidente.estado)) {
@@ -114,11 +123,7 @@ function guardarSeguimiento() {
             ...incidente,
             responsableId: incidente.responsableId || null,
             observaciones: incidente.observaciones.trim(),
-        }, resultado => {
-            if (!resultado?.ok) { error.value = resultado?.error ?? 'No se pudo guardar el caso.'; return; }
-            incidenteSeleccionado.value = { ...resultado.data, responsableId: resultado.data.responsableId ?? '', observaciones: '' };
-            mensajeGuardado.value = true;
-        });
+        }, finalizarGuardado);
         return;
     }
 
@@ -167,14 +172,41 @@ function guardarSeguimiento() {
         observaciones,
     };
 
-    emit('guardar', actualizado);
+    emit('guardar', actualizado, finalizarGuardado);
+}
 
-    incidenteSeleccionado.value = {
-        ...actualizado,
-        responsableId: actualizado.responsableId ?? '',
-    };
+async function solicitarEliminacion() {
+    if (!props.incidente || !puedeEliminar.value || props.saving) return;
 
-    mensajeGuardado.value = true;
+    error.value = '';
+    confirmandoEliminacion.value = true;
+    await nextTick();
+    botonCancelarEliminacion.value?.focus();
+}
+
+async function cancelarEliminacion() {
+    if (props.saving) return;
+
+    confirmandoEliminacion.value = false;
+    error.value = '';
+    await nextTick();
+    botonEliminar.value?.focus();
+}
+
+function confirmarEliminacion() {
+    if (!props.incidente || !puedeEliminar.value || !confirmandoEliminacion.value || props.saving) return;
+
+    error.value = '';
+    const { folio, version } = props.incidente;
+
+    emit('eliminar', { folio, version }, resultado => {
+        if (!resultado?.ok) {
+            error.value = resultado?.error ?? 'No se pudo eliminar el incidente.';
+            return;
+        }
+
+        emit('volver', props.demo ? 'Incidente eliminado de la demostración.' : 'Incidente eliminado.');
+    });
 }
 
 function cerrarDetalle() {
@@ -198,6 +230,7 @@ function cerrarDetalle() {
             v-if="incidenteSeleccionado"
             class="modal-overlay"
             @click.self="cerrarDetalle"
+            @keydown.esc.stop.prevent="confirmandoEliminacion ? cancelarEliminacion() : cerrarDetalle()"
         >
             <section
                 class="incident-modal"
@@ -207,22 +240,40 @@ function cerrarDetalle() {
             >
                 <header class="modal-header">
                     <div>
-                        <span class="eyebrow">GESTIÓN DEL INCIDENTE</span>
+                        <span class="eyebrow">{{ eliminado ? 'INCIDENTE ELIMINADO' : 'GESTIÓN DEL INCIDENTE' }}</span>
                         <h2 id="incident-detail-title">
-                            {{ incidenteSeleccionado.folio }}
+                            {{ incidenteSeleccionado.folioCorto ?? incidenteSeleccionado.folio }}
                         </h2>
                     </div>
 
                     <button
                         class="close-button"
                         aria-label="Cerrar"
+                        :disabled="saving"
                         @click="cerrarDetalle"
                     >
                         ×
                     </button>
                 </header>
 
-                <div class="modal-body">
+                <div v-if="confirmandoEliminacion" class="modal-body">
+                    <h3 class="h6 mb-0">¿Eliminar este incidente?</h3>
+                    <p class="mb-0">
+                        {{ demo
+                            ? 'El incidente se quitará de esta demostración.'
+                            : 'El incidente dejará de aparecer en los paneles, reportes y avisos. Su historial quedará guardado.' }}
+                    </p>
+                    <div v-if="error" class="error-message" role="alert">
+                        {{ error }}
+                    </div>
+                </div>
+
+                <div v-else class="modal-body">
+                    <div v-if="eliminado" class="readonly-message">
+                        Eliminado el <strong>{{ incidenteSeleccionado.eliminadoEn }}</strong>
+                        · {{ incidenteSeleccionado.eliminadoPor ?? 'Autor sin registrar' }}
+                    </div>
+
                     <div class="incident-intro">
                         <div class="intro-icon">!</div>
                         <div>
@@ -253,7 +304,7 @@ function cerrarDetalle() {
                         </div>
 
                         <div class="info-field">
-                            <label>Estado actual</label>
+                            <label>{{ eliminado ? 'Estado al eliminar' : 'Estado actual' }}</label>
                             <strong>{{ props.incidente?.estado }}</strong>
                         </div>
                     </div>
@@ -357,32 +408,56 @@ function cerrarDetalle() {
                             @input="marcarCambio"
                         ></textarea>
                     </div>
-                    <section v-if="!demo && props.incidente?.seguimientos?.length" class="description-box">
+                    <section v-if="eliminado || (!demo && props.incidente?.seguimientos?.length)" class="description-box">
                         <h4 class="section-label">Historial de seguimiento</h4>
-                        <ol>
+                        <ol v-if="props.incidente?.seguimientos?.length">
                             <li v-for="registro in props.incidente.seguimientos" :key="registro.id">
                                 <strong>{{ registro.estado }}</strong> · {{ registro.fecha }} · {{ registro.autor }}
                                 <p>{{ registro.observacion }}</p>
                             </li>
                         </ol>
+                        <p v-else>No hay seguimientos registrados.</p>
                     </section>
-                    <div v-if="soloLectura" class="readonly-message">
-                        Este incidente está cerrado y solo se puede consultar.
+                    <div v-if="soloLectura && !eliminado" class="readonly-message">
+                        Este incidente está cerrado. Ya no admite cambios de seguimiento.
                     </div>
 
                     <div v-if="error" class="error-message" role="alert">
                         {{ error }}
                     </div>
-                    <div
-                        v-if="mensajeGuardado"
-                        class="success-message"
-                        role="status"
-                    >
-                        ✓ {{ demo ? 'Seguimiento actualizado durante esta sesión de demostración.' : 'Cambios guardados en el sistema.' }}
-                    </div>
                 </div>
 
-                <footer class="modal-footer">
+                <footer v-if="confirmandoEliminacion" class="modal-footer flex-wrap">
+                    <button
+                        ref="botonCancelarEliminacion"
+                        type="button"
+                        class="btn btn-outline-secondary btn-sm"
+                        :disabled="saving"
+                        @click="cancelarEliminacion"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        type="button"
+                        class="btn btn-danger btn-sm"
+                        :disabled="saving"
+                        @click="confirmarEliminacion"
+                    >
+                        {{ saving ? 'Eliminando…' : 'Confirmar eliminación' }}
+                    </button>
+                </footer>
+
+                <footer v-else-if="!eliminado" class="modal-footer flex-wrap">
+                    <button
+                        v-if="puedeEliminar"
+                        ref="botonEliminar"
+                        type="button"
+                        class="btn btn-outline-danger btn-sm me-auto"
+                        :disabled="saving"
+                        @click="solicitarEliminacion"
+                    >
+                        Eliminar incidente
+                    </button>
                     <button
                         v-if="!soloLectura"
                         :disabled="saving"
@@ -393,9 +468,6 @@ function cerrarDetalle() {
                         {{ !demo && incidenteSeleccionado.estado === 'Cerrada' ? 'Cerrar incidente' : (saving ? 'Guardando…' : 'Guardar seguimiento') }}
                     </button>
 
-                    <button v-if="demo" class="save-button" @click="guardarSeguimiento">
-                        Guardar seguimiento
-                    </button>
                 </footer>
             </section>
         </div>
@@ -770,15 +842,6 @@ function cerrarDetalle() {
 .form-field textarea {
     resize: vertical;
     line-height: 1.6;
-}
-
-.success-message {
-    padding: 11px 13px;
-    border: 1px solid #b9e6cc;
-    border-radius: 7px;
-    background: #e8f8ef;
-    color: #198754;
-    font-size: 11px;
 }
 
 .modal-footer {

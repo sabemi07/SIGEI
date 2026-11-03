@@ -18,15 +18,20 @@ class IncidentReadController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $input = $request->validate([
-            'scope' => ['sometimes', Rule::in(['all', 'assigned', 'mine'])],
+            'scope' => ['sometimes', Rule::in(['all', 'assigned', 'mine', 'deleted'])],
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ]);
         $scope = $input['scope'] ?? 'all';
         $user = $request->user();
         $query = Incident::query()->with(['currentAssignment.assignee', 'reporter', 'updates.author']);
+        $dateColumn = 'reported_at';
 
-        if ($scope === 'mine') {
+        if ($scope === 'deleted') {
+            Gate::authorize('viewDeleted', Incident::class);
+            $query->onlyTrashed()->with('deletionAudit.actor');
+            $dateColumn = 'deleted_at';
+        } elseif ($scope === 'mine') {
             $query->where('reporter_user_id', $user->id);
         } elseif ($scope === 'assigned') {
             $query->whereHas('currentAssignment', fn (Builder $query) => $query->where('assigned_to', $user->id));
@@ -38,7 +43,7 @@ class IncidentReadController extends Controller
         }
 
         return IncidentResource::collection(
-            $query->orderByDesc('reported_at')->orderByDesc('id')->paginate($input['per_page'] ?? 100)->withQueryString()
+            $query->orderByDesc($dateColumn)->orderByDesc('id')->paginate($input['per_page'] ?? 100)->withQueryString()
         );
     }
 

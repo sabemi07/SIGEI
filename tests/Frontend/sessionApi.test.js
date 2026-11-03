@@ -65,6 +65,25 @@ test('a failed logout connection does not invoke session cleanup', async t => {
     assert.equal(cleaned, false);
 });
 
+test('a connection check can time out without ending the session', async t => {
+    const controller = new AbortController();
+    let receivedSignal;
+    let cleaned = false;
+    stubFetch(t, async (_path, { signal }) => {
+        receivedSignal = signal;
+        return new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        });
+    });
+    const api = createSessionApi({ onUnauthorized() { cleaned = true; } });
+    const check = api.request('/api/settings/public', { signal: controller.signal });
+    controller.abort();
+
+    await assert.rejects(check, error => error.status === 0);
+    assert.equal(receivedSignal, controller.signal);
+    assert.equal(cleaned, false);
+});
+
 test('validation failures remain errors and do not invoke session cleanup', async t => {
     let cleaned = false;
     stubFetch(t, async () => json({ errors: { correo: ['Ese correo ya está registrado.'] } }, 422));

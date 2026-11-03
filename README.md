@@ -1,6 +1,6 @@
 # SIGEI — Sistema de Gestión de Emergencias Institucionales
 
-Proyecto de estadías para una institución educativa. El acceso, las cuentas, el reporte público, los incidentes, la campana y Configuración utilizan Laravel y MySQL. Web Push está integrado mediante colas y se comprobó la recepción de una prueba en Brave de escritorio. La demostración Vue se conserva por separado; las pruebas físicas Android/iPhone con HTTPS siguen pendientes.
+Proyecto de estadías para una institución educativa. El acceso, las cuentas, el reporte público, los incidentes, la campana y Configuración utilizan Laravel y MySQL. Web Push está integrado mediante colas: se comprobó una prueba en Brave de escritorio y el usuario confirmó su funcionamiento en iPhone desde la pantalla de inicio mediante HTTPS. La demostración Vue se conserva por separado; Android y las comprobaciones móviles con página cerrada y cambios de cuenta siguen pendientes.
 
 ## Estado comprobado
 
@@ -15,7 +15,7 @@ Proyecto de estadías para una institución educativa. El acceso, las cuentas, e
 | Acceso de demostración | Selector ficticio únicamente en la demo; no concede permisos sobre la base real |
 | Incidentes reales | Registro público, asignación, recepción, seguimiento y cierre persistentes con autorización |
 | Avisos actuales | Campana y Web Push mediante cola; aceptación del proveedor, lectura y recepción del personal se distinguen |
-| Dispositivos | Suscripciones por cuenta y dispositivo, claves cifradas, revocación y mensajes genéricos protegidos; prueba real recibida en Brave |
+| Dispositivos | Suscripciones por cuenta y dispositivo, claves cifradas, revocación y mensajes por tipo; recepción confirmada por el usuario en Brave e iPhone |
 | Configuración | Nombre, siglas, catálogos y preferencias persistentes; edición exclusiva del Administrador |
 | Base de datos | MySQL local `sigei` preparado; credenciales privadas en `.env` |
 | Alojamiento | Pendiente; `vercel.json` sigue destinado a la demo estática |
@@ -149,11 +149,13 @@ Laravel identifica este navegador mediante una cookie cifrada y HttpOnly; el cli
 
 `GET /api/push` devuelve clave pública, estado de la asociación y última prueba de ese dispositivo; `POST /api/push` registra la suscripción, `DELETE /api/push` la revoca y `POST /api/push/test` solicita una prueba para la cuenta y el dispositivo actuales. Las direcciones admitidas usan HTTPS y servicios de Google, Mozilla o Apple configurados en `config/sigei.php`. El emisor vuelve a validar el destino, mantiene la verificación de certificados y no sigue redirecciones. Las suscripciones caducadas no se presentan como vinculadas. La auditoría no almacena direcciones ni claves.
 
-`public/sigei-sw.js` recibe únicamente un identificador opaco de aviso y su asociación, dentro del mensaje cifrado. Antes de mostrar un aviso genérico, consulta al servidor con la cookie cifrada del dispositivo y la asociación recibida. Se comprueban destinatario, activación, versión de autorización y permiso sobre el caso. Esta comprobación solo devuelve texto genérico y permite recibir avisos aunque la sesión de acceso haya caducado. Al tocar el aviso, la aplicación exige sesión y permisos para abrir el caso. El enlace explícito puede solicitar inicio de sesión; la entrada habitual sigue siendo el botón de pánico. El worker no muestra observaciones, ubicaciones ni datos internos y no intercepta ni guarda páginas, respuestas API ni reportes para enviarlos sin conexión.
+`public/sigei-sw.js` recibe únicamente un identificador opaco de aviso y su asociación, dentro del mensaje cifrado. Antes de mostrarlo, consulta al servidor con la cookie cifrada del dispositivo y la asociación recibida. Se comprueban destinatario, activación, versión de autorización y permiso sobre el caso. El servidor devuelve un tipo de aviso admitido, y el worker elige un texto fijo: **Nueva alerta**, **Alerta asignada**, **Seguimiento actualizado** o **Prueba de notificaciones**. Seguimiento actualizado abarca las actualizaciones que ya registra el sistema: gestión, confirmación de recepción, avances y cierre. El texto se elige a partir de la respuesta verificada; los títulos, cuerpos y tipos arbitrarios del mensaje Push no se muestran. Los tipos desconocidos reciben un aviso general. Esta comprobación permite recibir avisos aunque la sesión de acceso haya caducado. Al tocar el aviso, la aplicación exige sesión y permisos para abrir el caso. El enlace explícito puede solicitar inicio de sesión; la entrada habitual sigue siendo el botón de pánico. El worker conserva privados folios, nombres, observaciones y ubicaciones; no intercepta ni guarda páginas, respuestas API ni reportes para enviarlos sin conexión.
+
+Al volver a abrir SIGEI o pulsar **Comprobar dispositivo**, la vinculación comprueba el worker con `updateViaCache: 'none'`. El worker nuevo activa la actualización mediante [`skipWaiting()`](https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorkerGlobalScope/skipWaiting) y [`clients.claim()`](https://developer.mozilla.org/en-US/docs/Web/API/Clients/claim). Así puede adoptar los textos actualizados manteniendo la suscripción existente. El aviso de prueba conserva su etiqueta de prueba; para revisar los otros textos hay que generar el registro, la asignación o la actualización correspondiente.
 
 Los eventos nuevos de registro, asignación y seguimiento se encolan según las preferencias institucionales; no se reenvía el historial anterior al habilitar Push. Antes de enviar se vuelven a comprobar preferencias, cuenta, permisos, asociación y caducidad. Una respuesta 404 o 410 revoca la asociación caducada sin afectar una asociación posterior. Los errores temporales de red, 429 y fallos del proveedor pueden reintentarse hasta tres veces, con esperas técnicas de 15 y 60 segundos. Los rechazos permanentes y los errores de certificado se registran sin direcciones, claves ni mensajes sensibles del proveedor. Un fallo de Push no elimina el aviso interno ni realiza llamadas externas durante el formulario de emergencia.
 
-El manifiesto y el icono del sistema están preparados para su revisión como aplicación web. Se requiere un navegador compatible y un contexto seguro: HTTPS o localhost. Abrir desde otro teléfono mediante una dirección HTTP de la red local no acredita compatibilidad ni recepción. Las pruebas físicas, la revisión de instalación en iPhone y la entrega con la página cerrada siguen pendientes. Referencias: [suscripción del navegador](https://developer.mozilla.org/en-US/docs/Web/API/PushManager/subscribe), [Web Push en iOS y iPadOS](https://webkit.org/blog/13878/), [formato de los destinos de Mozilla](https://mozilla-services.github.io/autopush-rs/http.html).
+El manifiesto y el icono del sistema permiten agregar SIGEI como aplicación web. Se requiere un navegador compatible y un contexto seguro: HTTPS o localhost. Abrir desde otro teléfono mediante una dirección HTTP de la red local no acredita compatibilidad ni recepción. El usuario confirmó el funcionamiento básico en iPhone después de abrir SIGEI desde su icono en la pantalla de inicio; Android, la entrega con la página cerrada y los cambios de cuenta en móviles siguen pendientes de verificación física. Referencias: [suscripción del navegador](https://developer.mozilla.org/en-US/docs/Web/API/PushManager/subscribe), [Web Push en iOS y iPadOS](https://webkit.org/blog/13878/), [formato de los destinos de Mozilla](https://mozilla-services.github.io/autopush-rs/http.html).
 
 En Brave de escritorio, `Registration failed - push service error` puede aparecer si el navegador no tiene habilitado su servicio de mensajería Push. Revisar **Configuración → Privacidad y seguridad → Use Google services for push messaging**; esta opción permite usar el servicio de Google y es independiente del permiso concedido a SIGEI. Si se elige habilitarla, recargar SIGEI y volver a vincular el dispositivo. El mensaje también puede deberse a un fallo de conexión con el proveedor, por lo que no confirma por sí solo que esa opción esté desactivada. SIGEI muestra una explicación de este caso y conserva el estado sin vincular cuando el navegador falla. Referencias: [ayuda oficial de Brave](https://support.brave.app/hc/en-us/articles/360017989132-How-do-I-change-my-Privacy-Settings), [incidencia del navegador con ese mensaje](https://github.com/brave/brave-browser/issues/41930).
 
@@ -250,6 +252,39 @@ Para desarrollo, abrir dos terminales: una con `php artisan serve` y otra con `n
 
 Sesiones, caché y colas utilizan la configuración de base de datos. Los envíos Push usan la cola `webpush`; el alojamiento final deberá permitir HTTPS y un proceso permanente para atenderla.
 
+### Probar el sistema local en Android e iPhone
+
+Se puede usar un túnel HTTPS de ngrok hacia Laravel. La laptop conserva PHP, MySQL y el procesador de la cola; debe permanecer encendida y conectada durante la prueba. El enlace permite llegar desde el teléfono al sistema conectado. La configuración estática de Vercel continúa sirviendo la demostración.
+
+Antes de abrir el túnel, cambiar `APP_DEBUG=false` en el `.env` privado, ejecutar `php artisan config:clear` y compilar con `npm run build:laravel`. Detener cualquier `npm run dev` o `npm run dev:laravel` con Ctrl+C para que retire `public/hot`; los recursos de la prueba se sirven desde la compilación de Laravel.
+
+ngrok requiere una cuenta. Si aún no se ha configurado, obtener el authtoken en su panel y ejecutar `ngrok config add-authtoken TU_TOKEN` en la terminal de la laptop. Sustituir el marcador por el token privado sin guardarlo en el repositorio ni compartirlo. Consultar la [guía oficial de Windows](https://ngrok.com/download/windows) y los [límites del plan elegido](https://ngrok.com/pricing).
+
+Con MySQL iniciado, mantener estas tres terminales abiertas en la carpeta del proyecto. Si Laravel o la cola ya están funcionando con estos parámetros, reutilizar esas terminales:
+
+```powershell
+# Terminal 1: Laravel
+php artisan serve --host=127.0.0.1 --port=8000
+```
+
+```powershell
+# Terminal 2: envíos Push
+php artisan queue:work database --queue=webpush --tries=3 --timeout=45
+```
+
+```powershell
+# Terminal 3: abrir el acceso público temporal HTTPS
+ngrok http http://127.0.0.1:8000 --inspect=false
+```
+
+El último comando expone temporalmente esta instalación y sus datos a través de la dirección pública que muestra ngrok. Usar casos ficticios para las pruebas y compartir el enlace solo con quienes participen. Al terminar, detener ngrok con Ctrl+C para retirar el acceso. No es el despliegue definitivo. Si el plan muestra un aviso previo de ngrok, continuar con **Visit Site** antes de instalar o probar SIGEI.
+
+Laravel confía en los encabezados de proxy únicamente cuando llegan desde `127.0.0.1` o `::1`. Así reconoce el HTTPS externo, genera recursos seguros y protege la cookie del dispositivo; los encabezados enviados directamente desde otras direcciones no cambian el esquema ni la IP del cliente. El acceso HTTP local continúa funcionando. Esta configuración debe revisarse con las direcciones reales del proxy cuando se elija el alojamiento.
+
+Abrir en el teléfono la dirección **HTTPS** que indique ngrok. En Android, usar Chrome actualizado. En iPhone con iOS 16.4 o posterior, abrir en Safari, elegir **Compartir → Agregar a pantalla de inicio** y abrir SIGEI desde ese icono antes de solicitar notificaciones. Esta modalidad es necesaria para Web Push en iPhone: [documentación de WebKit](https://webkit.org/blog/13878/).
+
+Iniciar sesión desde el botón de pánico, abrir la campana, vincular ese dispositivo con la cuenta y pulsar **Enviar aviso de prueba**. Confirmar la notificación visible y su apertura; después comprobar la recepción con la página cerrada, el acceso al caso con sesión/permisos y la desvinculación al salir o cambiar de cuenta. Una respuesta aceptada por el proveedor no acredita todas esas pruebas. Si cambia el dominio usado para abrir SIGEI, volver a instalar o vincular desde la nueva dirección. El usuario ya confirmó el funcionamiento básico en iPhone; las demás comprobaciones físicas deben registrarse cuando se realicen.
+
 ## Comprobaciones
 
 La suite predeterminada utiliza SQLite en memoria y una clave exclusiva de pruebas mediante `phpunit.xml`. No requiere una compilación previa de Vite. La protección de `tests/TestCase.php` rechaza archivos SQLite persistentes, bases MySQL con otros nombres y conexiones mediante `DB_URL` antes de las migraciones:
@@ -303,24 +338,25 @@ try {
 
 | Comprobación ejecutada | Resultado |
 | --- | --- |
-| Suite SQLite en memoria | 220 pruebas correctas, 1274 aserciones; se omite solo la comparación de acentos específica de MySQL |
-| Misma suite en MySQL 8.4.3 aislado | 221 pruebas, 1280 aserciones, correctas |
-| Cliente, sesión y service worker (`npm run test:frontend`) | 34 pruebas correctas; incluye prueba encolada, separación de aceptación y entrega, y respuestas de otra cuenta |
+| Suite SQLite en memoria | 229 pruebas correctas, 1369 aserciones; se omite solo la comparación de acentos específica de MySQL |
+| Suite previa al ajuste de proxy, en MySQL 8.4.3 aislado | 221 pruebas, 1280 aserciones, correctas |
+| HTTPS mediante proxy local | Cinco pruebas incluidas en SQLite; recursos HTTPS, cookie segura y rechazo de encabezados desde direcciones no confiables |
+| Cliente, sesión y service worker (`npm run test:frontend`) | 41 pruebas correctas; incluye tipo de aviso verificado, rechazo de textos arbitrarios, actualización del worker, prueba encolada y respuestas de otra cuenta |
 | Reversión y reaplicación de las catorce migraciones nuevas | Correcta; conserva los datos originales de usuario y las claves de suscripciones durante su conversión |
 | Build de la demo en una salida temporal | Correcto; `dist` conserva los cambios previos |
 | `npm run build:laravel` | Correcto; manifest y recursos para Blade generados |
 | Laravel Pint y `composer validate` | Correctos |
 | Preparación de la base local `sigei` en MySQL 8.4.3 | 17 migraciones aplicadas; 19 tablas, configuración y catálogos conservados |
-| Prueba real local de Web Push | El usuario confirmó una notificación de Brave en su laptop; el proveedor aceptó los envíos y no había fallos registrados al comprobarlo |
+| Prueba real local de Web Push | El usuario confirmó una notificación de Brave en su laptop y funcionamiento básico en iPhone mediante HTTPS y pantalla de inicio; los textos nuevos aún requieren comprobación física |
 
-Las pruebas cubren restricciones, folios y fechas, autenticación, CSRF real, revocación de sesiones, permisos, último Administrador, alta inicial, registro público, deduplicación, límites, transición de estados, reasignación, conflictos, privacidad y lectura de avisos. Configuración y dispositivos tienen pruebas de persistencia, versiones, cifrado, revocación, permisos y validación. La nueva suite verifica transacciones de aviso y trabajo, mensajes cifrados con la biblioteca real y cliente HTTP simulado, respuestas 404/410, reintentos, rechazo permanente, asociación cambiada y prueba destinada al dispositivo actual. El usuario confirmó la recepción real de una notificación en Brave y la corrección del foco del formulario Usuarios. Las simulaciones automatizadas no acreditan otras plataformas: Android/iPhone, recepción con la página cerrada y revisión móvil completa siguen pendientes. Se actualizó `symfony/mime` de 7.4.19 a 7.4.22 para corregir el aviso CVE-2026-45070 detectado por Composer; la actualización terminó sin avisos de seguridad.
+Las pruebas cubren restricciones, folios y fechas, autenticación, CSRF real, revocación de sesiones, permisos, último Administrador, alta inicial, registro público, deduplicación, límites, transición de estados, reasignación, conflictos, privacidad y lectura de avisos. Configuración y dispositivos tienen pruebas de persistencia, versiones, cifrado, revocación, permisos y validación. La suite verifica transacciones de aviso y trabajo, mensajes cifrados con la biblioteca real y cliente HTTP simulado, respuestas 404/410, reintentos, rechazo permanente, asociación cambiada y prueba destinada al dispositivo actual. También comprueba el tipo de aviso sin exponer detalles del caso ni marcarlo como leído o recibido. El usuario confirmó funcionamiento real de notificaciones en Brave e iPhone y la corrección del foco del formulario Usuarios. Las simulaciones automatizadas complementan esas comprobaciones; Android, recepción con la página cerrada, cambios de cuenta en móviles y los textos nuevos siguen pendientes de prueba física. Se actualizó `symfony/mime` de 7.4.19 a 7.4.22 para corregir el aviso CVE-2026-45070 detectado por Composer; la actualización terminó sin avisos de seguridad.
 
 Las pruebas automatizadas de MySQL se verificaron en una instancia temporal independiente, que se apagó al terminar. La base de trabajo `sigei` recibió las migraciones aditivas para revocar sesiones, controlar versiones de incidentes y configuración, y deduplicar solicitudes. Se conservó la cuenta creada por el usuario y no se importaron incidentes de demostración. Las credenciales permanecen en el `.env` local, excluido de Git.
 
 ## Pendientes de seguridad y operación
 
 - Completar las pruebas reales del flujo de incidentes y Web Push con varias cuentas, dispositivos, sesión caducada y página cerrada.
-- Verificar Android e iPhone compatibles con HTTPS: permiso concedido no equivale a suscripción, entrega ni recepción confirmada.
+- Verificar Android y completar las comprobaciones de iPhone con HTTPS: permiso concedido no equivale a suscripción, entrega ni recepción confirmada.
 - Comparar alojamiento que soporte Laravel, MySQL y procesos de cola, con documentación, precios y límites vigentes antes de decidir o contratar.
 - Preparar respaldos, monitoreo, documentación de usuario y evidencias reales de pruebas.
 

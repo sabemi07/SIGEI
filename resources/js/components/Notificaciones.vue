@@ -227,7 +227,7 @@ onBeforeUnmount(() => {
 
                     <p>{{ item.descripcion }}</p>
 
-                    <span class="notification-folio">{{ item.folio }}</span>
+                    <span class="notification-folio">{{ item.folioCorto ?? item.folio }}</span>
                     <small>{{ item.fecha }}</small>
 
                     <div class="notification-actions">
@@ -243,7 +243,7 @@ onBeforeUnmount(() => {
                             v-if="!item.leida"
                             type="button"
                             class="read-button"
-                            :aria-label="`Marcar como leída: ${item.titulo}, ${item.folio}`"
+                            :aria-label="`Marcar como leída: ${item.titulo}, ${item.folioCorto ?? item.folio}`"
                             @click="emit('leer', item.id)"
                         >
                             Marcar leída

@@ -47,7 +47,7 @@ class NotificationAccessTest extends TestCase
         $response = $this->getJson('/api/notifications?per_page=1')->assertOk()->assertJsonCount(1, 'data')
             ->assertJsonPath('meta.total', 2)->assertJsonPath('meta.last_page', 2);
         $this->assertNotSame($private->id, $response->json('data.0.id'));
-        $this->assertEqualsCanonicalizing(['id', 'folio', 'titulo', 'descripcion', 'fecha', 'leida'], array_keys($response->json('data.0')));
+        $this->assertEqualsCanonicalizing(['id', 'folio', 'folioCorto', 'titulo', 'descripcion', 'fecha', 'leida'], array_keys($response->json('data.0')));
         $this->getJson('/api/notifications?per_page=101')->assertUnprocessable();
     }
 
@@ -58,7 +58,9 @@ class NotificationAccessTest extends TestCase
         $this->authenticateAccount($assignment->assignee);
 
         $this->postJson('/api/notifications/'.$notification->id.'/read')->assertOk()
-            ->assertJsonPath('data.leida', true)->assertJsonPath('data.folio', $assignment->incident->folio);
+            ->assertJsonPath('data.leida', true)
+            ->assertJsonPath('data.folio', $assignment->incident->folio)
+            ->assertJsonPath('data.folioCorto', $assignment->incident->folio_corto);
         $readAt = $notification->refresh()->read_at->toISOString();
         $this->travel(1)->minutes();
         $this->postJson('/api/notifications/'.$notification->id.'/read')->assertOk()->assertJsonPath('data.leida', true);

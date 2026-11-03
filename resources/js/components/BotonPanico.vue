@@ -4,12 +4,13 @@ import { requireIncidentReceipt } from '../incidentClient';
 const props = defineProps({
     demo: { type: Boolean, default: true },
     ready: { type: Boolean, default: true },
+    estadoRegistro: { type: String, default: 'verificando' },
     configuracion: {
         type: Object,
         required: true,
     },
 });
-const emit = defineEmits(['registrar']);
+const emit = defineEmits(['registrar', 'reintentar']);
 const mostrarConfirmacion = ref(false);
 const mostrarFormulario = ref(false);
 const enviado = ref(false);
@@ -26,6 +27,11 @@ onBeforeUnmount(() => { desmontado = true; });
 
 const tipos = computed(() => props.configuracion.tipos ?? []);
 const ubicaciones = computed(() => props.configuracion.ubicaciones ?? []);
+const mensajeRegistro = computed(() => {
+    if (props.estadoRegistro === 'disponible') return 'Disponible';
+    if (props.estadoRegistro === 'no-disponible') return 'No disponible';
+    return 'Comprobando…';
+});
 
 const otroLugar = ref('');
 const requiereDetalle = computed(() => props.demo
@@ -80,7 +86,7 @@ function enviarAlerta() {
     if (!props.demo) {
         errorEnvio.value = '';
         if (!props.ready) {
-            errorEnvio.value = 'Todavía no se pudo cargar la conexión y los catálogos. Vuelve a intentarlo.';
+            errorEnvio.value = 'El registro de emergencias no está disponible en este momento.';
             return;
         }
         if (!tipo.value || !ubicacion.value || (requiereDetalle.value && !otroLugar.value.trim())) return;
@@ -202,8 +208,9 @@ function reiniciar() {
             </div>
 
             <div class="panic-header-actions">
-                <span class="system-status">
-                    <i></i> {{ demo ? 'Modo demostración' : 'Registro de emergencias' }}
+                <span class="system-status" :class="demo ? 'estado-demo' : `estado-${estadoRegistro}`" role="status">
+                    <i aria-hidden="true"></i>
+                    {{ demo ? 'Modo demostración' : `Registro de emergencias · ${mensajeRegistro}` }}
                 </span>
 
                 <slot name="acceso" />
@@ -273,7 +280,7 @@ function reiniciar() {
                 <div class="result-details">
                     <p>
                         <strong>{{ demo ? 'Folio de demostración:' : 'Folio:' }}</strong>
-                        {{ comprobante.folio }}
+                        {{ comprobante.folioCorto ?? comprobante.folio }}
                     </p>
 
                     <p>
@@ -433,8 +440,24 @@ function reiniciar() {
                     <small v-if="demo" class="d-block text-secondary mt-3">
                         Demostración: no se enviará una alerta real.
                     </small>
-                    <small v-else class="d-block text-secondary mt-3">El reporte se guardará al confirmar. No necesitas una cuenta.</small>
-                    <small v-if="!demo && !ready" class="d-block text-secondary mt-2" role="status">Comprobando la conexión y los catálogos. Si no cargan, vuelve al inicio y reintenta la conexión.</small>
+                    <small v-else-if="ready" class="d-block text-secondary mt-3">
+                        El reporte se guardará al confirmar. No necesitas una cuenta.
+                    </small>
+                    <div v-else class="mt-3">
+                        <p class="small mb-2" role="status">
+                            {{ estadoRegistro === 'no-disponible'
+                                ? 'El registro de emergencias no está disponible en este momento.'
+                                : 'Comprobando la conexión para registrar el reporte…' }}
+                        </p>
+                        <button
+                            v-if="estadoRegistro === 'no-disponible'"
+                            type="button"
+                            class="btn btn-outline-secondary btn-sm"
+                            @click="emit('reintentar')"
+                        >
+                            Reintentar conexión
+                        </button>
+                    </div>
                     <div v-if="errorEnvio" class="alert alert-danger mt-3" role="alert">{{ errorEnvio }}</div>
 
                     <div class="dialog-actions">

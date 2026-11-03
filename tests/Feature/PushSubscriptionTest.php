@@ -244,18 +244,34 @@ class PushSubscriptionTest extends TestCase
         $this->assertDatabaseCount('push_subscriptions', 0);
     }
 
-    public function test_push_messages_require_a_current_binding_and_case_permission_without_confirming_receipt(): void
+    /** @return array<string, array{string, string}> */
+    public static function noticeKinds(): array
+    {
+        return [
+            'new alert' => ['incident.created', 'incident.created'],
+            'assignment' => ['incident.assigned', 'incident.assigned'],
+            'follow-up' => ['incident.updated', 'incident.updated'],
+            'test' => ['push.test', 'push.test'],
+            'unrecognized' => ['Private event type', 'notification'],
+        ];
+    }
+
+    #[DataProvider('noticeKinds')]
+    public function test_push_messages_identify_the_event_with_a_current_binding_without_exposing_case_details_or_confirming_receipt(string $kind, string $expectedKind): void
     {
         $user = User::factory()->responsible()->active()->create();
         $incident = Incident::factory()->create(['reporter_user_id' => $user->id]);
         $notice = InternalNotification::query()->create([
-            'user_id' => $user->id, 'incident_id' => $incident->id, 'kind' => 'incident.updated',
+            'user_id' => $user->id, 'incident_id' => $kind === 'push.test' ? null : $incident->id, 'kind' => $kind,
             'title' => 'Private title', 'body' => 'Private body',
         ]);
         $binding = $this->asAccount($user)->postJson('/api/push', $this->subscriptionData($user))->assertOk()->json('subscription.binding_id');
         $path = '/api/push/notifications/'.$notice->id;
         $this->getJson($path)->assertNotFound();
-        $response = $this->withHeader('X-SIGEI-Push-Binding', $binding)->getJson($path)->assertOk();
+        $response = $this->withHeader('X-SIGEI-Push-Binding', $binding)->getJson($path)->assertOk()
+            ->assertJsonPath('kind', $expectedKind)
+            ->assertJsonPath('is_test', $kind === 'push.test');
+        $this->assertEqualsCanonicalizing(['id', 'kind', 'title', 'body', 'url', 'is_test'], array_keys($response->json()));
         $this->assertStringNotContainsString('Private', $response->getContent());
         $this->assertStringNotContainsString($incident->folio, $response->getContent());
         $this->assertNull($notice->refresh()->read_at);

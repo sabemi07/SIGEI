@@ -258,6 +258,20 @@ class WebPushDeliveryTest extends TestCase
         $this->assertSame(PushDeliveryStatus::Skipped, $new->refresh()->status);
     }
 
+    public function test_queued_notifications_for_deleted_incidents_do_not_contact_the_push_provider(): void
+    {
+        $user = User::factory()->administrator()->active()->create();
+        $this->device($user);
+        $incident = Incident::factory()->create();
+        $this->notice($user, $incident);
+        $delivery = PushDelivery::query()->sole();
+        $incident->delete();
+
+        $this->transport->shouldNotReceive('sendOneNotification');
+        $this->assertFalse($this->sender->send($delivery->id));
+        $this->assertSame(PushDeliveryStatus::Skipped, $delivery->refresh()->status);
+    }
+
     public function test_preferences_and_allowed_hosts_are_rechecked_before_sending(): void
     {
         $user = User::factory()->administrator()->active()->create();

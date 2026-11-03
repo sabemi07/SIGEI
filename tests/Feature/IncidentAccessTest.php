@@ -8,6 +8,7 @@ use App\Models\Enums\IncidentStatus;
 use App\Models\Incident;
 use App\Models\IncidentAssignment;
 use App\Models\IncidentUpdate;
+use App\Models\InstitutionSetting;
 use App\Models\Location;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -172,7 +173,7 @@ class IncidentAccessTest extends TestCase
         $data = (new IncidentReceiptResource($assignment->incident))->resolve($request);
 
         $this->assertEqualsCanonicalizing([
-            'folio', 'tipo', 'ubicacion', 'fecha', 'hora', 'reportadoEn', 'descripcion', 'estado', 'prioridad',
+            'folio', 'folioCorto', 'tipo', 'ubicacion', 'fecha', 'hora', 'reportadoEn', 'descripcion', 'estado', 'prioridad',
         ], array_keys($data));
         $this->assertStringNotContainsString('OBSERVACIÓN INTERNA RESERVADA', json_encode($data));
     }
@@ -249,10 +250,22 @@ class IncidentAccessTest extends TestCase
         $other->update(['name' => 'Lugar específico']);
 
         $response = $this->getJson('/api/settings/public')->assertOk()->assertJsonCount(4, 'tipos')->assertJsonCount(9, 'ubicaciones')
+            ->assertJsonPath('registroDisponible', true)
             ->assertJsonMissingPath('notify_new_incidents')->assertJsonMissingPath('updated_by');
         $location = collect($response->json('ubicaciones'))->firstWhere('id', $other->id);
         $this->assertSame('Lugar específico', $location['nombre']);
         $this->assertTrue($location['requiereDetalle']);
-        $this->assertEqualsCanonicalizing(['institucion', 'siglas', 'tipos', 'ubicaciones'], array_keys($response->json()));
+        $this->assertEqualsCanonicalizing(['institucion', 'siglas', 'tipos', 'ubicaciones', 'registroDisponible'], array_keys($response->json()));
+    }
+
+    public function test_public_registration_is_unavailable_without_active_catalogs_or_institutional_settings(): void
+    {
+        $this->seed();
+        Location::query()->update(['is_active' => false]);
+        $this->getJson('/api/settings/public')->assertOk()->assertJsonPath('registroDisponible', false);
+
+        Location::query()->firstOrFail()->update(['is_active' => true]);
+        InstitutionSetting::query()->whereKey('institution')->delete();
+        $this->getJson('/api/settings/public')->assertOk()->assertJsonPath('registroDisponible', false);
     }
 }

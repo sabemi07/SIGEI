@@ -147,6 +147,8 @@ const usuarioActual = computed(() =>
 );
 const vistaAdmin = ref('dashboard');
 const vistaResponsable = ref('alertas');
+const mostrarEliminados = ref(false);
+const archivoIncidentes = ref({ incidentes: [] });
 
 const incidenteSeleccionado = ref(null);
 const origenDetalle = ref('incidentes');
@@ -185,6 +187,7 @@ function iniciarSesion(usuarioId) {
 
     vistaAdmin.value = 'dashboard';
     vistaResponsable.value = 'alertas';
+    mostrarEliminados.value = false;
     incidenteSeleccionado.value = null;
     origenDetalle.value = 'incidentes';
 
@@ -206,6 +209,7 @@ function cerrarSesion() {
     pantalla.value = 'panico';
     rolActual.value = null;
     vistaAdmin.value = 'dashboard';
+    mostrarEliminados.value = false;
     incidenteSeleccionado.value = null;
     origenDetalle.value = 'incidentes';
     vistaResponsable.value = 'alertas';
@@ -262,19 +266,22 @@ function cambiarVistaAdmin(vista) {
     }
 
     vistaAdmin.value = destino;
+    mostrarEliminados.value = false;
     incidenteSeleccionado.value = null;
 }
 
 function abrirDetalleIncidente(incidente, origen = 'incidentes') {
     if (rolActual.value !== 'administrador' || !incidente) return;
 
-    const registro = incidentes.value.find(
+    const registros = incidente.eliminadoEn ? archivoIncidentes.value.incidentes : incidentes.value;
+    const registro = registros.find(
         item => item.folio === incidente.folio
     );
 
     if (!registro) return;
 
     incidenteSeleccionado.value = registro;
+    mostrarEliminados.value = Boolean(registro.eliminadoEn);
 
     origenDetalle.value = Object.prototype.hasOwnProperty.call(
         titulosAdmin,
@@ -284,12 +291,38 @@ function abrirDetalleIncidente(incidente, origen = 'incidentes') {
     vistaAdmin.value = 'detalle-incidente';
 }
 
-function volverDeDetalle() {
+function volverDeDetalle(aviso = '') {
     vistaAdmin.value = origenDetalle.value;
     incidenteSeleccionado.value = null;
+    if (aviso) mensajeNotificacion.value = aviso;
 }
-function guardarSeguimientoIncidente(actualizado) {
-    if (rolActual.value !== 'administrador' || !actualizado) return;
+
+function eliminarIncidente({ folio }, responder) {
+    const registro = incidentes.value.find(incidente => incidente.folio === folio);
+    if (rolActual.value !== 'administrador' || !usuarioActual.value?.activo || incidenteSeleccionado.value?.folio !== folio || !registro) {
+        responder({ ok: false, error: 'El incidente ya no está disponible para eliminarlo.' });
+        return;
+    }
+
+    archivoIncidentes.value.incidentes.unshift({
+        ...registro,
+        eliminadoEn: new Intl.DateTimeFormat('es-MX', {
+            timeZone: 'America/Cancun',
+            dateStyle: 'short',
+            timeStyle: 'short',
+        }).format(new Date()),
+        eliminadoPor: usuarioActual.value.nombre,
+    });
+    incidentes.value = incidentes.value.filter(incidente => incidente.folio !== folio);
+    notificaciones.value = notificaciones.value.filter(aviso => aviso.folio !== folio);
+    responder({ ok: true });
+}
+
+function guardarSeguimientoIncidente(actualizado, responder) {
+    if (rolActual.value !== 'administrador' || !actualizado) {
+        responder({ ok: false, error: 'La cuenta no puede gestionar este incidente.' });
+        return;
+    }
 
     const original = incidentes.value.find(
         item => item.folio === actualizado.folio
@@ -300,6 +333,7 @@ function guardarSeguimientoIncidente(actualizado) {
         original.folio !== incidenteSeleccionado.value?.folio ||
         original.estado === 'Cerrada'
     ) {
+        responder({ ok: false, error: 'El incidente ya no está disponible para guardar cambios.' });
         return;
     }
 
@@ -310,7 +344,10 @@ function guardarSeguimientoIncidente(actualizado) {
             usuario.activo
     );
 
-    if (actualizado.responsableId && !responsable) return;
+    if (actualizado.responsableId && !responsable) {
+        responder({ ok: false, error: 'Selecciona una cuenta de Responsable activa.' });
+        return;
+    }
     const responsableAnteriorId = original.responsableId ?? null;
 
     const huboCambios =
@@ -346,8 +383,9 @@ function guardarSeguimientoIncidente(actualizado) {
         observaciones: actualizado.observaciones,
     });
     if (huboCambios) {
-    notificarCambio(original, responsableAnteriorId);
-}
+        notificarCambio(original, responsableAnteriorId);
+    }
+    responder({ ok: true });
 }
 function registrarIncidente(reporte) {
     if (
@@ -768,11 +806,13 @@ function guardarConfiguracion(nueva, responder) {
 </BotonPanico>
 
     <!-- Acceso a los paneles -->
-    <div v-else-if="pantalla === 'login'">
-        <nav
-            class="public-access"
-            aria-label="Regresar al inicio"
-        >
+    <Login
+        v-else-if="pantalla === 'login'"
+        :usuarios="usuarios"
+        :configuracion="configuracion"
+        @iniciar="iniciarSesion"
+    >
+        <template #navegacion>
             <button
                 type="button"
                 class="btn btn-outline-danger btn-sm"
@@ -780,14 +820,8 @@ function guardarConfiguracion(nueva, responder) {
             >
                 Volver al botón de pánico
             </button>
-        </nav>
-
-    <Login
-    :usuarios="usuarios"
-    :configuracion="configuracion"
-    @iniciar="iniciarSesion"
-    />
-    </div>
+        </template>
+    </Login>
 
     <!-- Panel del Responsable -->
     <ResponsableLayout
@@ -842,7 +876,7 @@ function guardarConfiguracion(nueva, responder) {
         "
         :active-view="
             vistaAdmin === 'detalle-incidente'
-                ? 'incidentes'
+                ? origenDetalle
                 : vistaAdmin
         "
         :configuracion="configuracion"
@@ -875,7 +909,9 @@ function guardarConfiguracion(nueva, responder) {
         <KeepAlive>
             <Incidentes
                 v-if="vistaAdmin === 'incidentes'"
+                v-model:mostrar-eliminados="mostrarEliminados"
                 :incidentes="incidentes"
+                :archivo="archivoIncidentes"
                 @gestionar="abrirDetalleIncidente($event, 'incidentes')"
             />
 
@@ -886,7 +922,10 @@ function guardarConfiguracion(nueva, responder) {
 
             <Reportes
                 v-else-if="vistaAdmin === 'reportes'"
+                v-model:mostrar-eliminados="mostrarEliminados"
                 :incidentes="incidentes"
+                :archivo="archivoIncidentes"
+                @consultar="abrirDetalleIncidente($event, 'reportes')"
             />
             <Configuracion
                 v-else-if="vistaAdmin === 'configuracion'"
@@ -900,6 +939,7 @@ function guardarConfiguracion(nueva, responder) {
                 :incidente="incidenteSeleccionado"
                 :usuarios="usuarios"
                 @guardar="guardarSeguimientoIncidente"
+                @eliminar="eliminarIncidente"
                 @volver="volverDeDetalle"
             />
 
@@ -970,16 +1010,6 @@ function guardarConfiguracion(nueva, responder) {
     margin: 8px 0 22px;
     color: #8491a3;
     font-size: 13px;
-}
-.public-access {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-    width: 100%;
-    padding: 12px 24px;
-    background: #fff;
 }
 .panic-header-actions {
     display: flex;

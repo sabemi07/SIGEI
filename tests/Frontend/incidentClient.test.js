@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadAllPages, requireIncidentReceipt } from '../../resources/js/incidentClient.js';
+import { loadAllPages, matchesIncidentSearch, requireIncidentReceipt } from '../../resources/js/incidentClient.js';
 
 test('loads every page before returning the report collection and removes repeated rows', async () => {
     const calls = [];
@@ -49,4 +49,22 @@ test('only a valid server receipt can become a success and private fields are ex
     assert.equal(receipt.folio, 'SIG-01ARZ3NDEKTSV4RRFFQ69G5FAV');
     assert.equal('observaciones' in receipt, false);
     assert.equal('reportanteId' in receipt, false);
+});
+
+test('a receipt includes the short folio alongside its original identifier', () => {
+    const data = { folio: 'SIG-01ARZ3NDEKTSV4RRFFQ69G5FAV', folioCorto: 'SIG-02AF58', fecha: '29/10/2026', hora: '10:00' };
+    const receipt = requireIncidentReceipt(data);
+    assert.equal(receipt.folioCorto, 'SIG-02AF58');
+    assert.equal(receipt.folio, data.folio);
+    assert.throws(() => requireIncidentReceipt({ ...data, folioCorto: 'SIG-2AF58' }));
+});
+
+test('incident search accepts the six characters, both full folios and legacy demo entries', () => {
+    const incident = { folio: 'SIG-01ARZ3NDEKTSV4RRFFQ69G5FAV', folioCorto: 'SIG-02AF58', tipo: 'Accidente', ubicacion: 'Edificio A' };
+
+    for (const query of [' 02af58 ', 'SIG-02AF58', incident.folio, 'edificio', 'accidente', '']) {
+        assert.equal(matchesIncidentSearch(incident, query), true);
+    }
+    assert.equal(matchesIncidentSearch(incident, 'SIG-05AF58'), false);
+    assert.equal(matchesIncidentSearch({ folio: 'SIG-2026-001' }, '2026-001'), true);
 });

@@ -1,4 +1,14 @@
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const noticeMessages = new Map([
+    ['incident.created', ['SIGEI · Nueva alerta', 'Se reportó una emergencia. Abre SIGEI para revisar la alerta.']],
+    ['incident.assigned', ['SIGEI · Alerta asignada', 'Se te asignó una alerta. Abre SIGEI para confirmar su recepción.']],
+    ['incident.updated', ['SIGEI · Seguimiento actualizado', 'Se actualizó la atención de una alerta. Abre SIGEI para consultar el seguimiento.']],
+    ['push.test', ['SIGEI · Prueba de notificaciones', 'Esta es una prueba de los avisos en este dispositivo.']],
+]);
+const defaultNotice = ['SIGEI · Aviso institucional', 'Hay un aviso nuevo para tu cuenta. Abre SIGEI para consultarlo.'];
+
+self.addEventListener('install', event => event.waitUntil(self.skipWaiting()));
+self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
 
 self.addEventListener('push', event => {
     event.waitUntil((async () => {
@@ -13,8 +23,10 @@ self.addEventListener('push', event => {
             if (!response.ok) return;
             const notice = await response.json();
             if (notice.id !== payload.notification_id) return;
-            await self.registration.showNotification(notice.is_test ? 'SIGEI · Prueba de notificaciones' : 'SIGEI · Aviso institucional', {
-                body: notice.is_test ? 'Esta es una prueba de los avisos en este dispositivo.' : 'Abre el sistema para consultar un aviso de tu cuenta.',
+            const kind = notice.kind ?? (notice.is_test === true ? 'push.test' : 'notification');
+            const [title, body] = noticeMessages.get(kind) ?? defaultNotice;
+            await self.registration.showNotification(title, {
+                body,
                 tag: `sigei-${notice.id}`, data: { id: notice.id },
             });
         } catch { /* Una sesión sin verificar o sin conexión no autoriza mostrar datos de incidentes. */ }

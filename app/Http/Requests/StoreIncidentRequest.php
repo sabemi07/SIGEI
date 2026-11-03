@@ -31,6 +31,8 @@ class StoreIncidentRequest extends FormRequest
             'descripcion' => ['nullable', 'string', 'max:1000'],
             'solicitud_id' => ['required', 'string', 'uuid'],
             'website' => ['prohibited'],
+            'folio_corto' => ['prohibited'],
+            'folioCorto' => ['prohibited'],
         ];
 
         foreach (['id', 'folio', 'estado', 'status', 'prioridad', 'priority', 'responsable', 'responsable_id', 'assigned_to', 'reportante', 'reportante_id', 'reporter_user_id', 'reported_at', 'fecha', 'hora', 'closed_at', 'closed_by', 'lock_version', 'version', 'type_name', 'location_name', 'observaciones', 'seguimientos', 'submission_key_hash', 'submission_scope_hash', 'submission_payload_hash'] as $field) {

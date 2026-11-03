@@ -145,7 +145,7 @@ function colorEstado(estado) {
 
                     <tbody>
                         <tr v-for="item in incidentes" :key="item.folio">
-                            <td class="folio">{{ item.folio }}</td>
+                            <td class="folio">{{ item.folioCorto ?? item.folio }}</td>
                             <td>{{ item.tipo }}</td>
                             <td>{{ item.ubicacion }}</td>
                             <td>{{ item.hora }}</td>

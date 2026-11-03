@@ -17,9 +17,16 @@ export async function loadAllPages(request, path, { isCurrent = () => true } = {
 
 export function requireIncidentReceipt(data) {
     if (!data || typeof data.folio !== 'string' || !/^SIG-[0-9A-HJKMNP-TV-Z]{26}$/.test(data.folio)
+        || (data.folioCorto != null && (typeof data.folioCorto !== 'string' || !/^SIG-[0-9A-HJKMNP-TV-Z]{6}$/.test(data.folioCorto)))
         || typeof data.fecha !== 'string' || !/^\d{2}\/\d{2}\/\d{4}$/.test(data.fecha)
         || typeof data.hora !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(data.hora)) {
         throw new Error('No se recibió un comprobante válido. Conserva los datos y vuelve a intentarlo.');
     }
-    return Object.fromEntries(['folio', 'tipo', 'ubicacion', 'fecha', 'hora', 'reportadoEn', 'descripcion', 'estado', 'prioridad'].map(key => [key, data[key]]));
+    return Object.fromEntries(['folio', 'folioCorto', 'tipo', 'ubicacion', 'fecha', 'hora', 'reportadoEn', 'descripcion', 'estado', 'prioridad'].map(key => [key, data[key]]));
+}
+
+export function matchesIncidentSearch(incident, query) {
+    const text = query.trim().toLowerCase();
+    return [incident.folioCorto, incident.folio, incident.tipo, incident.ubicacion]
+        .some(value => typeof value === 'string' && value.toLowerCase().includes(text));
 }

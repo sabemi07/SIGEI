@@ -20,6 +20,11 @@ class IncidentPolicy
         return $this->isAdministrator($user) || ($this->isResponsible($user) && $this->isAssigned($user, $incident));
     }
 
+    public function viewDeleted(User $user): bool
+    {
+        return $this->isAdministrator($user);
+    }
+
     public function assign(User $user, Incident $incident): bool
     {
         return $this->isAdministrator($user) && $incident->status !== IncidentStatus::Closed;
@@ -40,6 +45,11 @@ class IncidentPolicy
     public function close(User $user, Incident $incident): bool
     {
         return $this->isAdministrator($user) && $incident->status === IncidentStatus::Attended;
+    }
+
+    public function delete(User $user, Incident $incident): bool
+    {
+        return $this->isAdministrator($user) && ! $incident->trashed();
     }
 
     private function isAssigned(User $user, Incident $incident): bool

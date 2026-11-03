@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\InternalNotification;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -14,8 +16,8 @@ class InternalNotificationController extends Controller
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ]);
-        $notifications = InternalNotification::query()->where('user_id', $request->user()->id)
-            ->with('incident:id,folio')->orderByDesc('created_at')->orderByDesc('id')
+        $notifications = $this->visibleNotifications($request->user())
+            ->with('incident:id,folio,folio_corto')->orderByDesc('created_at')->orderByDesc('id')
             ->paginate($input['per_page'] ?? 100)->withQueryString();
         $notifications->through(fn (InternalNotification $notification): array => $this->present($notification));
 
@@ -39,20 +41,29 @@ class InternalNotificationController extends Controller
     public function read(Request $request, InternalNotification $notification): JsonResponse
     {
         abort_unless($notification->user_id === $request->user()->id, 404);
+        $notification->load('incident:id,folio,folio_corto');
+        abort_if($notification->incident_id !== null && $notification->incident === null, 404);
 
         if ($notification->read_at === null) {
             $notification->update(['read_at' => now('UTC')]);
         }
 
-        return response()->json(['data' => $this->present($notification->load('incident:id,folio'))]);
+        return response()->json(['data' => $this->present($notification)]);
     }
 
     public function readAll(Request $request): JsonResponse
     {
-        InternalNotification::query()->where('user_id', $request->user()->id)->whereNull('read_at')
+        $this->visibleNotifications($request->user())->whereNull('read_at')
             ->update(['read_at' => now('UTC')]);
 
         return response()->json(['ok' => true]);
+    }
+
+    /** @return Builder<InternalNotification> */
+    private function visibleNotifications(User $user): Builder
+    {
+        return InternalNotification::query()->where('user_id', $user->id)
+            ->where(fn (Builder $query): Builder => $query->whereNull('incident_id')->orWhereHas('incident'));
     }
 
     /** @return array<string, mixed> */
@@ -61,6 +72,7 @@ class InternalNotificationController extends Controller
         return [
             'id' => $notification->id,
             'folio' => $notification->incident?->folio,
+            'folioCorto' => $notification->incident?->folio_corto,
             'titulo' => $notification->title,
             'descripcion' => $notification->body,
             'fecha' => $notification->created_at->setTimezone(config('sigei.display_timezone'))->format('d/m/Y H:i'),

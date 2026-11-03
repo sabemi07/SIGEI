@@ -129,6 +129,68 @@ class IncidentWorkflowTest extends TestCase
         $this->assertSame(5, $incident->refresh()->lock_version);
     }
 
+    public function test_administrator_removes_an_incident_from_the_panels_and_bell_without_erasing_its_history(): void
+    {
+        [$administrator, $responsible, $incident] = $this->assignedIncident();
+        $incident->update(['reporter_user_id' => $responsible->id]);
+        $notification = InternalNotification::query()->where('user_id', $responsible->id)->sole();
+        $otherIncident = Incident::factory()->create();
+        $endpoint = '/api/incidents/'.$incident->folio;
+
+        $this->asAccount($responsible)->postJson($this->endpoint($incident, 'receipt'), ['version' => 1])->assertOk();
+        $this->asAccount($administrator)->getJson($endpoint)->assertOk()->assertJsonPath('data.permisos.eliminar', true);
+        $this->travelTo(now('UTC')->setDateTime(2026, 11, 3, 15, 30, 0));
+        $this->deleteJson($endpoint, ['version' => 2])->assertNoContent();
+
+        $this->assertSoftDeleted($incident);
+        $this->assertNotSoftDeleted($otherIncident);
+        $this->assertDatabaseHas('incident_updates', ['incident_id' => $incident->id, 'author_id' => $responsible->id]);
+        $this->assertDatabaseHas('incident_assignments', ['incident_id' => $incident->id, 'received_by' => $responsible->id]);
+        $this->assertDatabaseHas('internal_notifications', ['id' => $notification->id, 'incident_id' => $incident->id]);
+        $deletion = AuditLog::query()->where('incident_id', $incident->id)->where('action', 'incident.deleted')->sole();
+        $this->assertSame($administrator->id, $deletion->actor_id);
+        $this->assertNotNull($deletion->created_at);
+
+        $this->getJson('/api/incidents')->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.folio', $otherIncident->folio);
+        $this->getJson('/api/incidents?scope=deleted')->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.folio', $incident->folio)
+            ->assertJsonPath('data.0.folioCorto', $incident->folio_corto)
+            ->assertJsonPath('data.0.eliminadoEn', '03/11/2026 10:30')
+            ->assertJsonPath('data.0.eliminadoPor', $administrator->name)
+            ->assertJsonPath('data.0.seguimientos.0.autor', $responsible->name)
+            ->assertJsonPath('data.0.permisos.gestionar', false)
+            ->assertJsonPath('data.0.permisos.eliminar', false);
+        $this->getJson($endpoint)->assertNotFound();
+        $this->deleteJson($endpoint, ['version' => 2])->assertNotFound();
+
+        $this->asAccount($responsible);
+        $this->getJson('/api/incidents?scope=deleted')->assertForbidden();
+        foreach (['assigned', 'mine'] as $scope) {
+            $this->getJson('/api/incidents?scope='.$scope)->assertOk()->assertJsonCount(0, 'data');
+        }
+        $this->postJson($this->endpoint($incident, 'updates'), ['version' => 2, 'estado' => 'En atención', 'observacion' => 'Seguimiento tardío'])->assertNotFound();
+        $this->getJson('/api/notifications')->assertOk()->assertJsonCount(0, 'data');
+        $this->postJson('/api/notifications/'.$notification->id.'/read')->assertNotFound();
+        $this->postJson('/api/notifications/read-all')->assertOk();
+        $this->assertNull($notification->refresh()->read_at);
+    }
+
+    public function test_deleting_requires_an_active_administrator_and_the_current_incident_version(): void
+    {
+        [$administrator, $responsible, $incident] = $this->assignedIncident();
+        $endpoint = '/api/incidents/'.$incident->folio;
+
+        $this->asAccount($responsible)->getJson($endpoint)->assertOk()->assertJsonPath('data.permisos.eliminar', false);
+        $this->deleteJson($endpoint, ['version' => 1])->assertForbidden();
+        $this->asAccount(User::factory()->administrator()->inactive()->create())
+            ->deleteJson($endpoint, ['version' => 1])->assertUnauthorized();
+
+        $this->asAccount($administrator)->deleteJson($endpoint)->assertUnprocessable()->assertJsonValidationErrors('version');
+        $this->deleteJson($endpoint, ['version' => 0])->assertConflict();
+        $this->assertNotSoftDeleted($incident);
+        $this->assertDatabaseMissing('audit_logs', ['incident_id' => $incident->id, 'action' => 'incident.deleted']);
+    }
+
     public function test_old_versions_cannot_overwrite_a_more_recent_management_change(): void
     {
         [$administrator, $responsible, $incident] = $this->assignedIncident();

@@ -15,7 +15,9 @@ use App\Models\InternalNotification;
 use App\Models\Location;
 use App\Models\PushSubscription;
 use App\Models\User;
+use App\Services\IncidentFolio;
 use Illuminate\Database\QueryException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -45,22 +47,27 @@ class BackendFoundationTest extends TestCase
         $incident = Incident::factory()->create()->refresh();
 
         $this->assertMatchesRegularExpression('/^SIG-[0-9A-HJKMNP-TV-Z]{26}$/', $incident->folio);
+        $this->assertMatchesRegularExpression('/^SIG-(?=.*[0-9])(?=.*[A-Z])[0-9A-HJKMNP-TV-Z]{6}$/', $incident->folio_corto);
         $this->assertNull($incident->reporter_user_id);
         $this->assertNull($incident->currentAssignment);
         $this->assertSame(IncidentStatus::Pending, $incident->status);
         $this->assertSame(IncidentPriority::Unevaluated, $incident->priority);
-        $this->assertNotSame($incident->folio, Incident::factory()->create()->folio);
+        $other = Incident::factory()->create();
+        $this->assertNotSame($incident->folio, $other->folio);
+        $this->assertNotSame($incident->folio_corto, $other->folio_corto);
     }
 
     public function test_folios_and_catalog_snapshots_are_generated_even_if_supplied(): void
     {
         $incident = Incident::factory()->make();
         $incident->folio = 'folio-enviado-por-cliente';
+        $incident->folio_corto = 'folio-corto-impuesto';
         $incident->type_name = 'Tipo falso';
         $incident->location_name = 'Ubicación falsa';
         $incident->save();
 
         $this->assertStringStartsWith('SIG-', $incident->folio);
+        $this->assertStringStartsWith('SIG-', $incident->folio_corto);
         $this->assertSame($incident->emergencyType->name, $incident->type_name);
         $this->assertSame($incident->location->name, $incident->location_name);
 
@@ -85,9 +92,29 @@ class BackendFoundationTest extends TestCase
         $incident = Incident::factory()->create();
         $duplicate = $incident->getAttributes();
         unset($duplicate['id']);
+        $duplicate['folio_corto'] = IncidentFolio::nextShort(DB::connection());
 
         $this->expectException(QueryException::class);
         DB::table('incidents')->insert($duplicate);
+    }
+
+    public function test_database_rejects_a_duplicate_short_folio_with_a_different_original(): void
+    {
+        $duplicate = Incident::factory()->create()->getAttributes();
+        unset($duplicate['id']);
+        $duplicate['folio'] = 'SIG-'.Str::ulid();
+
+        $this->expectException(UniqueConstraintViolationException::class);
+        DB::table('incidents')->insert($duplicate);
+    }
+
+    public function test_existing_short_folios_cannot_be_reassigned(): void
+    {
+        $incident = Incident::factory()->create();
+        $incident->folio_corto = IncidentFolio::nextShort(DB::connection());
+
+        $this->expectException(LogicException::class);
+        $incident->save();
     }
 
     public function test_database_rejects_unknown_incident_status(): void

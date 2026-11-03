@@ -7,16 +7,25 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    archivo: {
+        type: Object,
+        default: () => ({ incidentes: [] }),
+    },
 });
 
+const mostrarEliminados = defineModel('mostrarEliminados', { type: Boolean, default: false });
+const emit = defineEmits(['consultar']);
+const registros = computed(() => mostrarEliminados.value ? props.archivo.incidentes : props.incidentes);
+const archivoPendiente = computed(() => mostrarEliminados.value && (props.archivo.cargando || props.archivo.error));
+
 const incidentes = computed(() =>
-    props.incidentes.map(item => {
+    registros.value.map(item => {
         // Convierte DD/MM/AAAA a AAAA-MM-DD para los filtros de fecha.
         const [dia, mes, anio] = item.fecha.split('/');
 
         return {
             ...item,
-            fecha: `${anio}-${mes}-${dia}`,
+            fechaFiltro: `${anio}-${mes}-${dia}`,
         };
     })
 );
@@ -57,8 +66,8 @@ const resultados = computed(() => {
     if (errorFechas.value) return [];
 
     return incidentes.value.filter(item =>
-        (!fechaInicio.value || item.fecha >= fechaInicio.value) &&
-        (!fechaFin.value || item.fecha <= fechaFin.value) &&
+        (!fechaInicio.value || item.fechaFiltro >= fechaInicio.value) &&
+        (!fechaFin.value || item.fechaFiltro <= fechaFin.value) &&
         (!filtroTipo.value || item.tipo === filtroTipo.value) &&
         (!filtroEstado.value || item.estado === filtroEstado.value) &&
         (!filtroPrioridad.value || item.prioridad === filtroPrioridad.value)
@@ -125,9 +134,11 @@ function limpiarFiltros() {
     filtroPrioridad.value = '';
 }
 
-function formatearFecha(fecha) {
-    const [anio, mes, dia] = fecha.split('-');
-    return `${dia}/${mes}/${anio}`;
+function cambiarOrigen(eliminados) {
+    if (mostrarEliminados.value === eliminados) return;
+
+    mostrarEliminados.value = eliminados;
+    limpiarFiltros();
 }
 
 function celdaCsv(valor) {
@@ -142,7 +153,7 @@ function celdaCsv(valor) {
 }
 
 function exportarCsv() {
-    if (errorFechas.value || resultados.value.length === 0) return;
+    if (archivoPendiente.value || errorFechas.value || resultados.value.length === 0) return;
 
     const filas = [
         [
@@ -154,16 +165,20 @@ function exportarCsv() {
             'Prioridad',
             'Estado',
             'Responsable',
+            'Folio corto',
+            ...(mostrarEliminados.value ? ['Eliminado el', 'Eliminado por'] : []),
         ],
         ...resultados.value.map(item => [
             item.folio,
-            item.fecha,
+            item.fechaFiltro,
             item.hora,
             item.tipo,
             item.ubicacion,
             item.prioridad,
             item.estado,
             item.responsable,
+            item.folioCorto ?? item.folio,
+            ...(mostrarEliminados.value ? [item.eliminadoEn, item.eliminadoPor] : []),
         ]),
     ];
 
@@ -180,7 +195,9 @@ function exportarCsv() {
     const enlace = document.createElement('a');
 
     enlace.href = url;
-    enlace.download = props.demo ? 'SIGEI_reporte_demostracion.csv' : 'SIGEI_reporte_incidentes.csv';
+    const origen = props.demo ? 'demostracion' : 'incidentes';
+    const sufijo = mostrarEliminados.value ? '_eliminados' : '';
+    enlace.download = `SIGEI_reporte_${origen}${sufijo}.csv`;
 
     document.body.appendChild(enlace);
     enlace.click();
@@ -209,12 +226,38 @@ function exportarCsv() {
                 <button
                     type="button"
                     class="primary-button"
-                    :disabled="!!errorFechas || resultados.length === 0"
+                    :disabled="!!archivoPendiente || !!errorFechas || resultados.length === 0"
                     @click="exportarCsv"
                 >
                     Exportar CSV
                 </button>
             </header>
+
+            <div class="mx-3 mb-3">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Vista del reporte">
+                    <button
+                        type="button"
+                        class="btn btn-outline-primary"
+                        :class="{ active: !mostrarEliminados }"
+                        :aria-pressed="!mostrarEliminados"
+                        @click="cambiarOrigen(false)"
+                    >
+                        Registrados
+                    </button>
+                    <button
+                        type="button"
+                        class="btn btn-outline-primary"
+                        :class="{ active: mostrarEliminados }"
+                        :aria-pressed="mostrarEliminados"
+                        @click="cambiarOrigen(true)"
+                    >
+                        Eliminados
+                    </button>
+                </div>
+                <p v-if="mostrarEliminados" class="small text-secondary mt-2 mb-0">
+                    Las fechas del filtro corresponden al registro de cada incidente.
+                </p>
+            </div>
 
             <div class="filters">
                 <div class="filter-field">
@@ -295,8 +338,14 @@ function exportarCsv() {
             </p>
         </section>
 
-        <template v-if="!errorFechas">
-            <section class="stats-grid" aria-label="Resumen del reporte">
+        <p v-if="mostrarEliminados && archivo.cargando" class="mb-0" role="status">
+            Cargando incidentes eliminados…
+        </p>
+        <p v-else-if="mostrarEliminados && archivo.error" class="alert alert-danger mb-0" role="alert">
+            {{ archivo.error }}
+        </p>
+        <template v-else-if="!errorFechas">
+            <section v-if="!mostrarEliminados" class="stats-grid" aria-label="Resumen del reporte">
                 <article
                     v-for="item in indicadores"
                     :key="item.titulo"
@@ -308,7 +357,7 @@ function exportarCsv() {
                 </article>
             </section>
 
-            <div class="charts-grid">
+            <div v-if="!mostrarEliminados" class="charts-grid">
                 <section class="panel chart-panel">
                     <h3>Incidentes por tipo</h3>
                     <p class="chart-description">
@@ -381,7 +430,7 @@ function exportarCsv() {
             <section class="panel">
                 <header class="panel-heading">
                     <div>
-                        <h2>Detalle de resultados</h2>
+                        <h2>{{ mostrarEliminados ? 'Reporte de incidentes eliminados' : 'Detalle de resultados' }}</h2>
                         <p>Incidentes que coinciden con los filtros seleccionados.</p>
                     </div>
 
@@ -398,17 +447,19 @@ function exportarCsv() {
                                 <th scope="col">Tipo</th>
                                 <th scope="col">Ubicación</th>
                                 <th scope="col">Prioridad</th>
-                                <th scope="col">Estado</th>
+                                <th scope="col">{{ mostrarEliminados ? 'Estado al eliminar' : 'Estado' }}</th>
                                 <th scope="col">Responsable</th>
+                                <th v-if="mostrarEliminados" scope="col">Eliminación</th>
+                                <th v-if="mostrarEliminados" scope="col">Detalle</th>
                             </tr>
                         </thead>
 
                         <tbody>
                             <tr v-for="item in resultados" :key="item.folio">
                                 <td>
-                                    <strong class="folio">{{ item.folio }}</strong>
+                                    <strong class="folio">{{ item.folioCorto ?? item.folio }}</strong>
                                     <small>
-                                        {{ formatearFecha(item.fecha) }}
+                                        {{ item.fecha }}
                                         · {{ item.hora }}
                                     </small>
                                 </td>
@@ -431,12 +482,22 @@ function exportarCsv() {
 
                                 <td>{{ item.estado }}</td>
                                 <td>{{ item.responsable }}</td>
+                                <td v-if="mostrarEliminados">
+                                    <strong>{{ item.eliminadoEn }}</strong>
+                                    <small>{{ item.eliminadoPor ?? 'Autor sin registrar' }}</small>
+                                </td>
+                                <td v-if="mostrarEliminados">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" @click="emit('consultar', item)">
+                                        Ver detalle
+                                    </button>
+                                </td>
                             </tr>
 
                             <tr v-if="resultados.length === 0">
-                                <td colspan="6" class="empty-state">
-                                    No se encontraron incidentes.
-                                    Prueba con otros filtros.
+                                <td :colspan="mostrarEliminados ? 8 : 6" class="empty-state">
+                                    {{ mostrarEliminados && !registros.length
+                                        ? 'Aún no hay incidentes eliminados.'
+                                        : 'No se encontraron incidentes. Prueba con otros filtros.' }}
                                 </td>
                             </tr>
                         </tbody>

@@ -90,6 +90,8 @@ class PushSubscriptionController extends Controller
 
         return response()->json([
             'id' => $notification->id,
+            'kind' => in_array($notification->kind, ['incident.created', 'incident.assigned', 'incident.updated', 'push.test'], true)
+                ? $notification->kind : 'notification',
             'title' => 'SIGEI · Aviso institucional',
             'body' => 'Abre el sistema para consultar un aviso de tu cuenta.',
             'url' => '/?aviso='.rawurlencode($notification->id),

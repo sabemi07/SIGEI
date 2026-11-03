@@ -22,6 +22,8 @@ class ManageIncidentRequest extends FormRequest
             'responsable_id' => ['present', 'nullable', 'integer', Rule::exists('users', 'id')->where('role', AccountRole::Responsible->value)->where('is_active', true)],
             'prioridad' => ['required', Rule::enum(IncidentPriority::class)],
             'observacion' => ['nullable', 'string', 'max:2000'],
+            'folio_corto' => ['prohibited'],
+            'folioCorto' => ['prohibited'],
         ];
 
         foreach (['estado', 'status', 'folio', 'reportante_id', 'reporter_user_id', 'tipo_id', 'ubicacion_id', 'descripcion', 'lock_version', 'closed_at', 'closed_by'] as $field) {

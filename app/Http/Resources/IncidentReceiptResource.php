@@ -14,6 +14,7 @@ class IncidentReceiptResource extends JsonResource
 
         return [
             'folio' => $this->folio,
+            'folioCorto' => $this->folio_corto,
             'tipo' => $this->type_name,
             'ubicacion' => $this->location_name.(filled($this->location_details) ? ' · '.$this->location_details : ''),
             'fecha' => $reportedAt->format('d/m/Y'),

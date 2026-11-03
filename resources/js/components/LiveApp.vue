@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { createSessionApi } from '../sessionApi';
 import { loadAllPages, requireIncidentReceipt } from '../incidentClient';
 import { createPushClient } from '../pushClient';
@@ -25,6 +25,8 @@ const usuario = ref(null);
 const usuarios = ref([]);
 const pantalla = ref('panico');
 const incidentes = ref([]);
+const mostrarEliminados = ref(false);
+const archivoIncidentes = ref({ incidentes: [], cargando: false, error: '' });
 const asignadas = ref([]);
 const misReportes = ref([]);
 const responsables = ref([]);
@@ -36,6 +38,8 @@ const cargandoDatos = ref(false);
 const datosCompletos = ref(false);
 const registrando = ref(false);
 const catalogosListos = ref(false);
+const sesionLista = ref(false);
+const enLinea = ref(navigator.onLine);
 let actualizacion = null;
 let intervalo = null;
 let cargaDetalle = 0;
@@ -49,6 +53,12 @@ const mensaje = ref('');
 const vistaAdmin = ref('dashboard');
 const vistaResponsable = ref('alertas');
 const ocupado = computed(() => autenticando.value || guardando.value || registrando.value || estadoPush.value.busy);
+const estadoRegistro = computed(() => {
+    if (!enLinea.value) return 'no-disponible';
+    if (cargando.value) return 'verificando';
+    return sesionLista.value && catalogosListos.value ? 'disponible' : 'no-disponible';
+});
+const listoParaRegistrar = computed(() => estadoRegistro.value === 'disponible' && !autenticando.value && !guardando.value);
 let versionSesion = 0;
 let sincronizacion = null;
 let sincronizacionPendiente = false;
@@ -71,6 +81,8 @@ function aplicarCuenta(cuenta) {
         cargandoConfiguracion.value = false;
         usuarios.value = [];
         incidentes.value = [];
+        mostrarEliminados.value = false;
+        archivoIncidentes.value = { incidentes: [], cargando: false, error: '' };
         asignadas.value = [];
         misReportes.value = [];
         responsables.value = [];
@@ -92,7 +104,7 @@ function abrirBotonPanico() {
     olvidarAvisoPendiente();
     cargaDetalle += 1;
     pantalla.value = 'panico';
-    cargarConfiguracionPublica().catch(error => { mensaje.value = error.message; });
+    revisarSesion();
 }
 
 async function volverAlPanel() {
@@ -160,8 +172,18 @@ async function sincronizarSesion() {
     if (sincronizacion) return sincronizacion;
     const version = versionSesion;
     sincronizacion = (async () => {
-        const datos = await api.request('/api/session');
-        if (!desmontado && version === versionSesion) aplicarCuenta(datos.user);
+        try {
+            const datos = await consultarConexion('/api/session');
+            if (desmontado || version !== versionSesion) return;
+            if (typeof datos.csrf_token !== 'string' || !datos.csrf_token) {
+                throw new Error('No se pudo comprobar la sesión.');
+            }
+            sesionLista.value = true;
+            aplicarCuenta(datos.user);
+        } catch (error) {
+            if (!desmontado && version === versionSesion) sesionLista.value = false;
+            throw error;
+        }
     })();
     try { await sincronizacion; } finally { sincronizacion = null; }
 }
@@ -171,6 +193,7 @@ function publicarCambioSesion() {
 }
 
 async function revisarSesion() {
+    if (!enLinea.value) return;
     if (ocupado.value || cargando.value) {
         sincronizacionPendiente = true;
         return;
@@ -190,7 +213,7 @@ async function revisarSesion() {
             errorLogin.value = 'La sesión cambió en otra pestaña o la cuenta ya no tiene el mismo acceso.';
         }
     } catch (error) {
-        mensaje.value = error.message;
+        if (pantalla.value !== 'panico') mensaje.value = error.message;
     }
 }
 
@@ -258,6 +281,7 @@ async function cambiarVistaAdmin(vista) {
     if (ocupado.value || usuario.value?.rol !== 'Administrador') return;
     if (!['dashboard', 'incidentes', 'usuarios', 'reportes', 'configuracion'].includes(vista)) return;
     vistaAdmin.value = vista;
+    mostrarEliminados.value = false;
     cargaDetalle += 1;
     mensaje.value = '';
     seleccionado.value = null;
@@ -268,12 +292,29 @@ async function cambiarVistaAdmin(vista) {
 
 let cargaPublica = 0;
 
+async function consultarConexion(ruta) {
+    const controlador = new AbortController();
+    const limite = window.setTimeout(() => controlador.abort(), 8000);
+    try {
+        return await api.request(ruta, { signal: controlador.signal });
+    } finally {
+        window.clearTimeout(limite);
+    }
+}
+
 async function cargarConfiguracionPublica() {
     const solicitud = ++cargaPublica;
-    const datos = await api.request('/api/settings/public');
-    if (!desmontado && solicitud === cargaPublica) {
+    try {
+        const datos = await consultarConexion('/api/settings/public');
+        if (desmontado || solicitud !== cargaPublica) return;
+        if (!Array.isArray(datos.tipos) || !Array.isArray(datos.ubicaciones)) {
+            throw new Error('No se pudo comprobar el registro de emergencias.');
+        }
         configuracion.value = datos;
-        catalogosListos.value = true;
+        catalogosListos.value = datos.registroDisponible === true;
+    } catch (error) {
+        if (!desmontado && solicitud === cargaPublica) catalogosListos.value = false;
+        throw error;
     }
 }
 
@@ -286,7 +327,7 @@ function aplicarConfiguracion(datos) {
         tipos: datos.tipos.filter(item => item.activo).map(({ id, nombre }) => ({ id, nombre })),
         ubicaciones: datos.ubicaciones.filter(item => item.activo).map(({ id, nombre, requiereDetalle }) => ({ id, nombre, requiereDetalle })),
     };
-    catalogosListos.value = true;
+    catalogosListos.value = configuracion.value.tipos.length > 0 && configuracion.value.ubicaciones.length > 0;
 }
 
 async function cargarConfiguracion(responder, { silenciosa = false } = {}) {
@@ -392,12 +433,10 @@ async function inicializar() {
     cargando.value = true;
     errorLogin.value = '';
     try {
-        await Promise.all([
-            cargarConfiguracionPublica(),
-            sincronizarSesion(),
-        ]);
+        await sincronizarSesion();
+        await cargarConfiguracionPublica();
     } catch (error) {
-        errorLogin.value = error.message;
+        if (pantalla.value === 'login') errorLogin.value = error.message;
     } finally {
         cargando.value = false;
         if (usuario.value) {
@@ -459,9 +498,30 @@ async function actualizarPanel({ allowBusy = false } = {}) {
     return carga.promise;
 }
 
+async function cargarEliminados() {
+    if (usuario.value?.rol !== 'Administrador' || archivoIncidentes.value.cargando) return;
+
+    const version = versionSesion;
+    const cuenta = claveCuenta(usuario.value);
+    const isCurrent = () => contextoActual(version, cuenta);
+    archivoIncidentes.value = { incidentes: [], cargando: true, error: '' };
+
+    try {
+        const eliminados = await loadAllPages(api.request, '/api/incidents?scope=deleted', { isCurrent });
+        if (isCurrent()) archivoIncidentes.value = { incidentes: eliminados, cargando: false, error: '' };
+    } catch (error) {
+        if (isCurrent()) archivoIncidentes.value = { incidentes: [], cargando: false, error: error.message };
+    }
+}
+
+watch(mostrarEliminados, mostrar => {
+    cargaDetalle += 1;
+    if (mostrar) cargarEliminados();
+});
+
 async function registrarReporte(datos, responder) {
-    if (registrando.value || cargando.value || autenticando.value || guardando.value || !catalogosListos.value) {
-        responder({ ok: false, error: 'Espera a que termine la comprobación de conexión y vuelve a registrar.' });
+    if (registrando.value || !listoParaRegistrar.value) {
+        responder({ ok: false, error: 'El registro de emergencias no está disponible en este momento.' });
         return;
     }
     const version = versionSesion;
@@ -475,6 +535,10 @@ async function registrarReporte(datos, responder) {
         }
         responder({ ok: true, data: requireIncidentReceipt(respuesta.data) });
     } catch (error) {
+        if (contextoActual(version, cuenta) && (!error.status || error.status >= 500)) {
+            cargaPublica += 1;
+            catalogosListos.value = false;
+        }
         responder({ ok: false, error: error.message });
         if (error.status === 422 && contextoActual(version, cuenta)
             && ['tipo_id', 'ubicacion_id', 'otro_lugar'].some(campo => campo in error.errors)) {
@@ -487,14 +551,16 @@ async function registrarReporte(datos, responder) {
 }
 
 async function abrirDetalle(incidente, origen = 'incidentes') {
-    if (ocupado.value) return;
+    if (ocupado.value || usuario.value?.rol !== 'Administrador') return;
     const solicitud = ++cargaDetalle;
     const version = versionSesion;
     const cuenta = claveCuenta(usuario.value);
     try {
-        const respuesta = await api.request(`/api/incidents/${encodeURIComponent(incidente.folio)}`);
+        const detalle = incidente.eliminadoEn
+            ? incidente
+            : (await api.request(`/api/incidents/${encodeURIComponent(incidente.folio)}`)).data;
         if (!contextoActual(version, cuenta) || solicitud !== cargaDetalle || usuario.value?.rol !== 'Administrador') return;
-        seleccionado.value = respuesta.data;
+        seleccionado.value = detalle;
         origenDetalle.value = origen;
         vistaAdmin.value = 'detalle-incidente';
     } catch (error) {
@@ -502,10 +568,11 @@ async function abrirDetalle(incidente, origen = 'incidentes') {
     }
 }
 
-function volverDeDetalle() {
+function volverDeDetalle(aviso = '') {
     cargaDetalle += 1;
     seleccionado.value = null;
     vistaAdmin.value = origenDetalle.value;
+    if (aviso) mensaje.value = aviso;
 }
 
 async function guardarGestion(cambio, responder) {
@@ -514,6 +581,15 @@ async function guardarGestion(cambio, responder) {
         ? { version: cambio.version, observacion: cambio.observaciones }
         : { version: cambio.version, responsable_id: cambio.responsableId || null, prioridad: cambio.prioridad, observacion: cambio.observaciones };
     await mutarIncidente(cambio.folio, cierre ? 'close' : 'management', body, responder, true);
+}
+
+async function eliminarIncidente({ folio, version }, responder) {
+    if (usuario.value?.rol !== 'Administrador' || seleccionado.value?.folio !== folio) {
+        responder({ ok: false, error: 'El incidente ya no está disponible para eliminarlo.' });
+        return;
+    }
+
+    await mutarIncidente(folio, 'delete', { version }, responder, true);
 }
 
 async function guardarSeguimiento(cambio, responder) {
@@ -529,21 +605,31 @@ async function mutarIncidente(folio, accion, body, responder, admin = false) {
     if (ocupado.value) { responder({ ok: false, error: 'Espera a que termine la operación actual.' }); return; }
     const version = versionSesion;
     const cuenta = claveCuenta(usuario.value);
+    const eliminacion = accion === 'delete';
+    const ruta = `/api/incidents/${encodeURIComponent(folio)}`;
     guardando.value = true;
     let resultado;
     try {
-        const respuesta = await api.request(`/api/incidents/${encodeURIComponent(folio)}/${accion}`, { method: 'POST', body });
+        const respuesta = await api.request(eliminacion ? ruta : `${ruta}/${accion}`, { method: eliminacion ? 'DELETE' : 'POST', body });
         if (!contextoActual(version, cuenta)) { resultado = { ok: false, error: 'La sesión cambió durante la operación.' }; return; }
-        if (admin) seleccionado.value = respuesta.data;
-        else asignadas.value = asignadas.value.map(item => item.folio === folio ? respuesta.data : item);
+        if (!eliminacion) {
+            if (admin) seleccionado.value = respuesta.data;
+            else asignadas.value = asignadas.value.map(item => item.folio === folio ? respuesta.data : item);
+        }
         resultado = { ok: true, data: respuesta.data };
     } catch (error) {
-        resultado = { ok: false, error: error.status === 409
+        resultado = { ok: false, error: !eliminacion && error.status === 409
             ? 'El caso cambió mientras lo editabas. Conserva tus notas, cierra el detalle y vuelve a abrirlo antes de guardar.' : error.message };
     } finally {
         const cargaAnterior = actualizacion?.promise;
         if (cargaAnterior) await cargaAnterior;
-        if (contextoActual(version, cuenta)) await actualizarPanel({ allowBusy: true });
+        if (contextoActual(version, cuenta)) {
+            if (eliminacion && resultado?.ok) {
+                incidentes.value = incidentes.value.filter(item => item.folio !== folio);
+                notificaciones.value = notificaciones.value.filter(item => item.folio !== folio);
+            }
+            await actualizarPanel({ allowBusy: true });
+        }
         guardando.value = false;
         responder(resultado ?? { ok: false, error: 'La sesión cambió durante la operación.' });
         await terminarOperacion();
@@ -585,6 +671,7 @@ async function abrirNotificacion(id) {
         if (!contextoActual(version, cuenta) || solicitud !== cargaDetalle) return;
         if (usuario.value.rol === 'Administrador') {
             seleccionado.value = respuesta.data;
+            mostrarEliminados.value = false;
             origenDetalle.value = 'incidentes';
             vistaAdmin.value = 'detalle-incidente';
         } else {
@@ -603,8 +690,17 @@ function alVolverAPestana() {
     if (document.visibilityState === 'visible') revisarSesion();
 }
 
+function alCambiarConexion() {
+    enLinea.value = navigator.onLine;
+    cargaPublica += 1;
+    catalogosListos.value = false;
+    if (enLinea.value && pantalla.value === 'panico') revisarSesion();
+}
+
 onMounted(() => {
     window.addEventListener('focus', revisarSesion);
+    window.addEventListener('online', alCambiarConexion);
+    window.addEventListener('offline', alCambiarConexion);
     document.addEventListener('visibilitychange', alVolverAPestana);
     navigator.serviceWorker?.addEventListener('message', alCambiarSuscripcion);
     if ('BroadcastChannel' in window) {
@@ -619,13 +715,16 @@ onMounted(() => {
     }
     inicializar();
     intervalo = window.setInterval(() => {
-        if (document.visibilityState === 'visible' && pantalla.value === 'panel' && usuario.value && !ocupado.value) revisarSesion();
+        if (document.visibilityState !== 'visible' || ocupado.value || cargando.value) return;
+        if (pantalla.value === 'panico' || (pantalla.value === 'panel' && usuario.value)) revisarSesion();
     }, 15000);
 });
 
 onBeforeUnmount(() => {
     desmontado = true;
     window.removeEventListener('focus', revisarSesion);
+    window.removeEventListener('online', alCambiarConexion);
+    window.removeEventListener('offline', alCambiarConexion);
     document.removeEventListener('visibilitychange', alVolverAPestana);
     navigator.serviceWorker?.removeEventListener('message', alCambiarSuscripcion);
     canal?.close();
@@ -635,7 +734,16 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <BotonPanico v-if="pantalla === 'panico'" :key="versionSesion" :demo="false" :ready="!cargando && !autenticando && !guardando && catalogosListos" :configuracion="configuracion" @registrar="registrarReporte">
+    <BotonPanico
+        v-if="pantalla === 'panico'"
+        :key="versionSesion"
+        :demo="false"
+        :ready="listoParaRegistrar"
+        :estado-registro="estadoRegistro"
+        :configuracion="configuracion"
+        @registrar="registrarReporte"
+        @reintentar="inicializar"
+    >
         <template #acceso>
             <button v-if="!usuario" type="button" class="btn btn-outline-primary btn-sm" @click="pantalla = 'login'">Iniciar sesión</button>
             <template v-else>
@@ -643,48 +751,66 @@ onBeforeUnmount(() => {
                 <button type="button" class="btn btn-outline-secondary btn-sm" :disabled="ocupado" @click="cerrarSesion">Cerrar sesión</button>
             </template>
             <span v-if="mensaje || errorLogin" role="status">{{ mensaje || errorLogin }}</span>
-            <button v-if="!catalogosListos && !cargando" type="button" class="btn btn-outline-secondary btn-sm" @click="inicializar">Reintentar conexión</button>
+            <button v-if="estadoRegistro === 'no-disponible' && !cargando" type="button" class="btn btn-outline-secondary btn-sm" @click="inicializar">Reintentar conexión</button>
         </template>
     </BotonPanico>
 
-    <div v-else-if="pantalla === 'login'">
-        <nav class="public-access" aria-label="Regresar al inicio">
+    <Login v-else-if="pantalla === 'login'" real :configuracion="configuracion" :busy="cargando || autenticando" :error-text="errorLogin" @credentials="iniciarSesion">
+        <template #navegacion>
             <button type="button" class="btn btn-outline-danger btn-sm" @click="abrirBotonPanico">Volver al botón de pánico</button>
             <button v-if="usuario" type="button" class="btn btn-outline-primary btn-sm" @click="volverAlPanel">Volver a mi panel</button>
-        </nav>
-        <Login real :configuracion="configuracion" :busy="cargando || autenticando" :error-text="errorLogin" @credentials="iniciarSesion">
-            <div class="live-login-note">
-                <p v-if="cargando" role="status">Comprobando la sesión…</p>
-                <p>Acceso del personal institucional. Para reportar una emergencia no necesitas iniciar sesión.</p>
-                <a href="/demo">Ver la demostración del diseño</a>
-                <button v-if="errorLogin" type="button" class="retry-button" :disabled="cargando || autenticando" @click="inicializar">Volver a comprobar la conexión</button>
-            </div>
-        </Login>
-    </div>
+        </template>
+        <div class="live-login-note">
+            <p v-if="cargando" role="status">Comprobando la sesión…</p>
+            <p>Puedes reportar una emergencia desde el botón de pánico sin iniciar sesión.</p>
+            <button v-if="errorLogin" type="button" class="btn btn-outline-primary btn-sm" :disabled="cargando || autenticando" @click="inicializar">Volver a comprobar la conexión</button>
+        </div>
+    </Login>
 
-    <AdminLayout v-else-if="usuario?.rol === 'Administrador'" :demo="false" :busy="ocupado" :usuario="usuario" :configuracion="configuracion" :active-view="vistaAdmin === 'detalle-incidente' ? 'incidentes' : vistaAdmin" @navigate="cambiarVistaAdmin" @logout="cerrarSesion">
+    <AdminLayout v-else-if="usuario?.rol === 'Administrador'" :demo="false" :busy="ocupado" :usuario="usuario" :configuracion="configuracion" :active-view="vistaAdmin === 'detalle-incidente' ? origenDetalle : vistaAdmin" @navigate="cambiarVistaAdmin" @logout="cerrarSesion">
         <template #notificaciones>
             <Notificaciones real :push-state="estadoPush" :notificaciones="notificaciones" @abrir="abrirNotificacion" @leer="marcarLeida" @leer-todas="marcarTodas" @vincular="vincularDispositivo" @desvincular="desvincularDispositivo" @revisar-dispositivo="clientePush.refresh" @probar="probarNotificaciones" />
             <button type="button" class="btn btn-outline-danger btn-sm" @click="abrirBotonPanico">Botón de pánico</button>
         </template>
         <div class="d-flex justify-content-end mb-3">
-            <button type="button" class="btn btn-outline-secondary btn-sm" :disabled="ocupado || cargandoDatos" @click="actualizarPanel">{{ cargandoDatos ? 'Actualizando…' : 'Actualizar incidentes y avisos' }}</button>
+            <button
+                v-if="mostrarEliminados"
+                type="button"
+                class="btn btn-outline-secondary btn-sm"
+                :disabled="ocupado || archivoIncidentes.cargando"
+                @click="cargarEliminados"
+            >{{ archivoIncidentes.cargando ? 'Actualizando…' : 'Actualizar eliminados' }}</button>
+            <button v-else type="button" class="btn btn-outline-secondary btn-sm" :disabled="ocupado || cargandoDatos" @click="actualizarPanel">{{ cargandoDatos ? 'Actualizando…' : 'Actualizar incidentes y avisos' }}</button>
         </div>
         <div v-if="mensaje" class="alert alert-info" role="status">{{ mensaje }}</div>
         <template v-if="vistaAdmin === 'usuarios'">
             <p v-if="cargandoUsuarios" role="status">Cargando cuentas…</p>
             <Usuarios :key="usuario.id" real :usuarios="usuarios" :saving="ocupado" :loading="cargandoUsuarios" @guardar="guardarUsuario" @cambiar-estado="cambiarEstado" />
         </template>
-        <DetalleIncidente v-else-if="vistaAdmin === 'detalle-incidente' && seleccionado" :demo="false" :saving="guardando" :incidente="seleccionado" :usuarios="responsables" @guardar="guardarGestion" @volver="volverDeDetalle" />
+        <DetalleIncidente v-else-if="vistaAdmin === 'detalle-incidente' && seleccionado" :demo="false" :saving="guardando" :incidente="seleccionado" :usuarios="responsables" @guardar="guardarGestion" @eliminar="eliminarIncidente" @volver="volverDeDetalle" />
         <template v-else-if="vistaAdmin === 'configuracion'">
             <p v-if="cargandoConfiguracion" role="status">Cargando configuración guardada…</p>
             <Configuracion v-if="configuracionAdministrativa" :key="usuario.id" real :configuracion="configuracionAdministrativa" :saving="ocupado || cargandoConfiguracion" @guardar="guardarConfiguracion" @recargar="cargarConfiguracion" />
             <button v-else-if="!cargandoConfiguracion" type="button" class="btn btn-outline-primary" @click="cargarConfiguracion">Reintentar cargar configuración</button>
         </template>
-        <template v-else-if="datosCompletos">
+        <template v-else-if="datosCompletos || mostrarEliminados">
             <Dashboard v-if="vistaAdmin === 'dashboard'" :demo="false" :incidentes="incidentes" @navigate="cambiarVistaAdmin" />
-            <Incidentes v-else-if="vistaAdmin === 'incidentes'" :demo="false" :incidentes="incidentes" @gestionar="abrirDetalle" />
-            <Reportes v-else-if="vistaAdmin === 'reportes'" :demo="false" :incidentes="incidentes" />
+            <Incidentes
+                v-else-if="vistaAdmin === 'incidentes'"
+                v-model:mostrar-eliminados="mostrarEliminados"
+                :demo="false"
+                :incidentes="incidentes"
+                :archivo="archivoIncidentes"
+                @gestionar="abrirDetalle"
+            />
+            <Reportes
+                v-else-if="vistaAdmin === 'reportes'"
+                v-model:mostrar-eliminados="mostrarEliminados"
+                :demo="false"
+                :incidentes="incidentes"
+                :archivo="archivoIncidentes"
+                @consultar="abrirDetalle($event, 'reportes')"
+            />
         </template>
         <p v-else role="status">{{ cargandoDatos ? 'Cargando los registros completos…' : 'No se cargaron los registros completos. Pulsa Actualizar para volver a intentarlo.' }}</p>
     </AdminLayout>
@@ -708,12 +834,14 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .live-login-note {
-    margin-top: 24px;
-    color: #64748b;
-    font-size: 12px;
-    line-height: 1.7;
-    text-align: center;
+    display: grid;
+    justify-items: start;
+    gap: 8px;
+    color: #50627b;
+    font-size: .82rem;
+    line-height: 1.6;
 }
+.live-login-note p { margin: 0; }
 .live-stage-note {
     max-width: 820px;
     padding: 28px;
@@ -724,5 +852,4 @@ onBeforeUnmount(() => {
 }
 .live-stage-note h2 { color: #17365d; font-size: 23px; }
 .live-stage-note p { color: #475569; }
-.retry-button { width: 100%; }
 </style>

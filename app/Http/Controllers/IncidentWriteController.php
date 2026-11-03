@@ -27,7 +27,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\Response;
 
 class IncidentWriteController extends Controller
 {
@@ -47,10 +49,10 @@ class IncidentWriteController extends Controller
             $keyHash = $this->digest('submission:'.$request->validated('solicitud_id'));
             $scopeHash = $this->digest($scope);
             $payloadHash = hash('sha256', json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
-            $existing = Incident::query()->where('submission_key_hash', $keyHash)->first();
+            $existing = Incident::withTrashed()->where('submission_key_hash', $keyHash)->first();
 
             if ($existing !== null) {
-                abort_unless(hash_equals($existing->submission_scope_hash, $scopeHash)
+                abort_unless(! $existing->trashed() && hash_equals($existing->submission_scope_hash, $scopeHash)
                     && hash_equals($existing->submission_payload_hash, $payloadHash), 409,
                     'Esta solicitud ya fue utilizada. Vuelve a abrir el formulario para registrar otro reporte.');
 
@@ -238,6 +240,28 @@ class IncidentWriteController extends Controller
                 $this->audit($incident, $actor, 'incident.closed', ['closed_by' => $actor->id]);
                 $this->notifyUpdate($incident, $actor, $settings);
             });
+    }
+
+    public function destroy(Request $request, Incident $incident): Response
+    {
+        Gate::authorize('delete', $incident);
+        $request->validate(
+            ['version' => ['required', 'integer', 'min:0']],
+            ['version.required' => 'La versión del incidente es obligatoria.', 'version.integer' => 'La versión del incidente no es válida.', 'version.min' => 'La versión del incidente no es válida.'],
+        );
+
+        DB::transaction(function () use ($request, $incident): void {
+            $this->lockInstitution();
+            $actor = $this->actor($request, false);
+            $current = Incident::query()->lockForUpdate()->findOrFail($incident->id);
+            Gate::forUser($actor)->authorize('delete', $current);
+
+            abort_unless($current->lock_version === $request->integer('version'), 409, 'El incidente cambió. Vuelve a abrir el detalle antes de eliminarlo.');
+            abort_unless($current->delete(), 500);
+            $this->audit($current, $actor, 'incident.deleted', ['status' => $current->status->value]);
+        }, 3);
+
+        return response()->noContent();
     }
 
     private function mutate(Request $request, Incident $boundIncident, AccountRole $role, Closure $operation): IncidentResource

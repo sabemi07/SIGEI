@@ -36,6 +36,7 @@ Route::prefix('api')->middleware([PreventApiCaching::class, IdentifyPushDevice::
         Route::get('/responsibles', [IncidentReadController::class, 'responsibles']);
         Route::get('/incidents', [IncidentReadController::class, 'index']);
         Route::get('/incidents/{incident:folio}', [IncidentReadController::class, 'show']);
+        Route::delete('/incidents/{incident:folio}', [IncidentWriteController::class, 'destroy']);
         Route::post('/incidents/{incident:folio}/management', [IncidentWriteController::class, 'manage']);
         Route::post('/incidents/{incident:folio}/receipt', [IncidentWriteController::class, 'receive']);
         Route::post('/incidents/{incident:folio}/updates', [IncidentWriteController::class, 'followUp']);

@@ -1,4 +1,5 @@
 <script setup>
+import { matchesIncidentSearch } from '../../incidentClient.js';
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
@@ -75,14 +76,8 @@ const indicadores = computed(() => [
 ]);
 
 const reportesFiltrados = computed(() => {
-    const texto = busqueda.value.trim().toLowerCase();
-
     return reportes.value.filter(reporte => {
-        const coincideTexto = [
-            reporte.folio,
-            reporte.tipo,
-            reporte.ubicacion,
-        ].some(valor => valor.toLowerCase().includes(texto));
+        const coincideTexto = matchesIncidentSearch(reporte, busqueda.value);
 
         return coincideTexto &&
             (filtroEstado.value === 'Todos' ||
@@ -229,7 +224,7 @@ watch(
                             :key="reporte.folio"
                         >
                             <td>
-                                <strong class="folio">{{ reporte.folio }}</strong>
+                                <strong class="folio">{{ reporte.folioCorto ?? reporte.folio }}</strong>
                                 <small>
                                     {{ reporte.fecha }} · {{ reporte.hora }}
                                 </small>
@@ -251,7 +246,7 @@ watch(
                                 <button
                                     type="button"
                                     class="detail-button"
-                                    :aria-label="`Ver mi reporte ${reporte.folio}`"
+                                    :aria-label="`Ver mi reporte ${reporte.folioCorto ?? reporte.folio}`"
                                     :aria-expanded="
                                         reporteSeleccionado?.folio === reporte.folio
                                     "
@@ -287,7 +282,7 @@ watch(
             <template v-if="reporteSeleccionado">
                 <header class="panel-header">
                     <div>
-                        <h2>{{ reporteSeleccionado.folio }}</h2>
+                        <h2>{{ reporteSeleccionado.folioCorto ?? reporteSeleccionado.folio }}</h2>
                         <p>Consulta de tu reporte</p>
                     </div>
 
