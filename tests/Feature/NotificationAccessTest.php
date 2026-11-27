@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Incident;
 use App\Models\IncidentAssignment;
 use App\Models\InternalNotification;
 use App\Models\User;
@@ -17,12 +18,12 @@ class NotificationAccessTest extends TestCase
         return $this->actingAs($user)->withSession(['account_auth_version' => $user->refresh()->auth_version]);
     }
 
-    private function notification(User $user, ?int $incidentId = null): InternalNotification
+    private function notification(User $user, ?int $incidentId = null, string $kind = 'incident.updated'): InternalNotification
     {
         return InternalNotification::query()->create([
             'user_id' => $user->id,
             'incident_id' => $incidentId,
-            'kind' => 'incident.updated',
+            'kind' => $kind,
             'title' => 'Caso actualizado',
             'body' => 'Consulta el caso en SIGEI.',
         ]);
@@ -32,6 +33,7 @@ class NotificationAccessTest extends TestCase
     {
         $notification = $this->notification(User::factory()->active()->create());
         $this->getJson('/api/notifications')->assertUnauthorized();
+        $this->getJson('/api/notifications/'.$notification->id.'/incident')->assertUnauthorized();
         $this->postJson('/api/notifications/'.$notification->id.'/read')->assertUnauthorized();
         $this->postJson('/api/notifications/read-all')->assertUnauthorized();
     }
@@ -103,6 +105,41 @@ class NotificationAccessTest extends TestCase
 
         $this->getJson('/api/notifications')->assertOk()->assertJsonPath('data.0.folio', $old->incident->folio);
         $this->postJson('/api/notifications/'.$notification->id.'/read')->assertOk();
+        $this->getJson('/api/notifications/'.$notification->id.'/incident')->assertNotFound();
         $this->getJson('/api/incidents/'.$old->incident->folio)->assertNotFound();
+    }
+
+    public function test_an_unassigned_responsible_can_open_only_the_summary_from_their_new_incident_notice(): void
+    {
+        $this->seed();
+        $responsible = User::factory()->responsible()->active()->create();
+        $other = User::factory()->responsible()->active()->create();
+        $incident = Incident::factory()->create([
+            'reported_at' => now('UTC')->setDateTime(2026, 11, 3, 16, 30, 0),
+            'location_details' => 'Junto a la entrada lateral',
+            'description' => 'Información privada del reporte.',
+        ]);
+        $notification = $this->notification($responsible, $incident->id, 'incident.created');
+        $path = '/api/notifications/'.$notification->id.'/incident';
+
+        $this->authenticateAccount($other)->getJson($path)->assertNotFound();
+        $this->authenticateAccount($responsible)->getJson($path)->assertOk()->assertExactJson([
+            'data' => [
+                'soloResumen' => true,
+                'folio' => $incident->folio,
+                'folioCorto' => $incident->folio_corto,
+                'tipo' => $incident->type_name,
+                'ubicacion' => $incident->location_name.' · Junto a la entrada lateral',
+                'fecha' => '03/11/2026',
+                'hora' => '11:30',
+            ],
+        ]);
+        $this->getJson('/api/incidents/'.$incident->folio)->assertNotFound();
+        $this->getJson('/api/incidents?scope=assigned')->assertOk()->assertJsonCount(0, 'data');
+        $this->postJson('/api/incidents/'.$incident->folio.'/receipt', ['version' => 0])->assertForbidden();
+        $this->assertNull($notification->refresh()->read_at);
+
+        $incident->delete();
+        $this->getJson($path)->assertNotFound();
     }
 }

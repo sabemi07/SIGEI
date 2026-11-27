@@ -287,7 +287,7 @@ class InstitutionSettingsTest extends TestCase
             'solicitud_id' => (string) Str::uuid(),
         ];
         $this->postJson('/api/incidents', $report)->assertCreated();
-        $this->assertDatabaseCount('internal_notifications', 1);
+        $this->assertDatabaseCount('internal_notifications', 2);
         $data['notificarNuevos'] = false;
         $data['notificarAsignaciones'] = false;
         $data['notificarSeguimiento'] = false;
@@ -301,13 +301,13 @@ class InstitutionSettingsTest extends TestCase
         $this->postJson('/api/incidents/'.$folio.'/updates', [
             'version' => 2, 'estado' => 'En atención', 'observacion' => 'Iniciando atención.',
         ])->assertOk();
-        $this->assertDatabaseCount('internal_notifications', 1);
+        $this->assertDatabaseCount('internal_notifications', 2);
         $this->asAccount($administrator);
         $saved['notificarNuevos'] = true;
         $this->putJson('/api/settings', $saved)->assertOk();
         $report['solicitud_id'] = (string) Str::uuid();
         $this->postJson('/api/incidents', $report)->assertCreated();
-        $this->assertDatabaseCount('internal_notifications', 2);
+        $this->assertDatabaseCount('internal_notifications', 4);
     }
 
     public function test_validation_failure_in_the_second_catalog_rolls_back_changes_to_the_first(): void

@@ -86,8 +86,9 @@ class IncidentWriteController extends Controller
             $this->audit($incident, $actor, 'incident.created', ['status' => $incident->status->value, 'priority' => $incident->priority->value]);
 
             if ($settings->notify_new_incidents) {
-                $recipients = User::query()->where('role', AccountRole::Administrator)->where('is_active', true)->pluck('id')->all();
-                $this->notify($incident, $recipients, 'incident.created', 'Nuevo incidente registrado', 'Se recibió un reporte pendiente de revisión.');
+                $recipients = User::query()->where('is_active', true)
+                    ->whereIn('role', array_column(AccountRole::cases(), 'value'))->pluck('id')->all();
+                $this->notify($incident, $recipients, 'incident.created', 'Nueva emergencia', 'Se reportó una emergencia. Abre el aviso para consultar el tipo y la ubicación.');
             }
 
             return $incident;

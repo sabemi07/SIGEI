@@ -29,4 +29,9 @@ class InternalNotification extends Model
     {
         return $this->belongsTo(Incident::class);
     }
+
+    public function isNewIncidentAlert(): bool
+    {
+        return $this->kind === 'incident.created';
+    }
 }

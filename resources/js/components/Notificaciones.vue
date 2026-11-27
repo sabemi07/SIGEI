@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps({
     real: { type: Boolean, default: false },
@@ -8,16 +8,22 @@ const props = defineProps({
         type: Array,
         default: () => [],
     },
+    resumenIncidente: { type: Object, default: null },
 });
 
-const emit = defineEmits(['abrir', 'leer', 'leer-todas', 'vincular', 'desvincular', 'revisar-dispositivo', 'probar']);
+const emit = defineEmits(['abrir', 'leer', 'leer-todas', 'vincular', 'desvincular', 'revisar-dispositivo', 'probar', 'cerrar-resumen']);
 
 const contenedor = ref(null);
 const botonCampana = ref(null);
+const dialogoResumen = ref(null);
 const abierto = ref(false);
 const soloSinLeer = ref(false);
 
 const panelId = 'panel-notificaciones';
+
+watch(dialogoResumen, dialogo => {
+    if (dialogo && !dialogo.open) dialogo.showModal();
+}, { flush: 'post' });
 
 const sinLeer = computed(() =>
     props.notificaciones.filter(item => !item.leida).length
@@ -309,10 +315,42 @@ onBeforeUnmount(() => {
                 Hasta 5 avisos recientes de esta cuenta{{ real ? '' : ' · Demostración' }}
             </footer>
         </section>
+
+        <dialog
+            v-if="resumenIncidente"
+            ref="dialogoResumen"
+            class="incident-summary rounded-3 border-0 shadow p-4"
+            aria-labelledby="titulo-resumen-incidente"
+            @close="emit('cerrar-resumen')"
+        >
+            <h2 id="titulo-resumen-incidente" class="h5">Nueva emergencia</h2>
+            <dl class="mb-3">
+                <dt>Tipo de emergencia</dt>
+                <dd class="text-break">{{ resumenIncidente.tipo }}</dd>
+                <dt>Ubicación</dt>
+                <dd class="text-break">{{ resumenIncidente.ubicacion }}</dd>
+                <dt>Hora del reporte</dt>
+                <dd>{{ resumenIncidente.fecha }} · {{ resumenIncidente.hora }}</dd>
+                <dt>Folio</dt>
+                <dd>{{ resumenIncidente.folioCorto ?? resumenIncidente.folio }}</dd>
+            </dl>
+            <form method="dialog" class="d-flex justify-content-end">
+                <button type="submit" class="btn btn-outline-secondary btn-sm" autofocus>Cerrar resumen</button>
+            </form>
+        </dialog>
     </div>
 </template>
 
 <style scoped>
+.incident-summary {
+    width: min(26rem, calc(100% - 2rem));
+    color: #24344a;
+}
+
+.incident-summary::backdrop {
+    background: rgb(15 23 42 / 50%);
+}
+
 .notifications {
     position: relative;
     flex-shrink: 0;

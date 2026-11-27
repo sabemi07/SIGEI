@@ -20,7 +20,7 @@ Proyecto de estadías para una institución educativa. El acceso, las cuentas, e
 | Base de datos | MySQL local `sigei` preparado; credenciales privadas en `.env` |
 | Alojamiento | Pendiente; `vercel.json` sigue destinado a la demo estática |
 
-Las versiones exactas están fijadas en `composer.lock` y `package-lock.json`. Laravel Boost se incorpora como herramienta de desarrollo conforme a `AGENTS.md`. Los archivos antiguos `admin/Alertas.vue` y `admin/Historial.vue` se conservan; no se importan en la interfaz actual.
+Las versiones exactas están fijadas en los archivos de bloqueo de Composer y npm. Para instalar SIGEI desde el ZIP, empieza por la sección Windows PowerShell y configura una base MySQL para la instalación.
 
 ## Orden de implementación
 

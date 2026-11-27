@@ -260,7 +260,7 @@ class PushSubscriptionTest extends TestCase
     public function test_push_messages_identify_the_event_with_a_current_binding_without_exposing_case_details_or_confirming_receipt(string $kind, string $expectedKind): void
     {
         $user = User::factory()->responsible()->active()->create();
-        $incident = Incident::factory()->create(['reporter_user_id' => $user->id]);
+        $incident = Incident::factory()->create(['reporter_user_id' => $kind === 'incident.created' ? null : $user->id]);
         $notice = InternalNotification::query()->create([
             'user_id' => $user->id, 'incident_id' => $kind === 'push.test' ? null : $incident->id, 'kind' => $kind,
             'title' => 'Private title', 'body' => 'Private body',

@@ -127,7 +127,7 @@ class WebPushDeliveryTest extends TestCase
     {
         $user = User::factory()->responsible()->active()->create();
         $subscription = $this->device($user);
-        $notice = $this->notice($user);
+        $notice = $this->notice($user, Incident::factory()->create(), 'incident.created');
         $delivery = PushDelivery::query()->sole();
         $this->transport->shouldReceive('sendOneNotification')->once()->withArgs(function (Subscription $target, string $payload, array $options) use ($notice, $subscription): bool {
             $this->assertSame(['notification_id' => $notice->id, 'binding_id' => $subscription->binding_id], json_decode($payload, true));
@@ -376,6 +376,43 @@ class WebPushDeliveryTest extends TestCase
         $this->assertDatabaseCount('internal_notifications', 1);
         $this->assertDatabaseCount('push_deliveries', 1);
         $this->assertDatabaseCount('jobs', 1);
+    }
+
+    public function test_new_incident_notifies_all_active_accounts_and_assignment_notifies_only_the_selected_responsible(): void
+    {
+        $administrator = User::factory()->administrator()->active()->create();
+        $assigned = User::factory()->responsible()->active()->create();
+        $unassigned = User::factory()->responsible()->active()->create();
+        $inactive = User::factory()->responsible()->inactive()->create();
+        $administratorDevice = $this->device($administrator);
+        $this->device($assigned);
+        $this->device($unassigned);
+        $this->device($inactive);
+        $this->transport->shouldNotReceive('sendOneNotification');
+
+        $folio = $this->postJson('/api/incidents', [
+            'tipo_id' => EmergencyType::query()->firstOrFail()->id,
+            'ubicacion_id' => Location::query()->where('requires_details', false)->firstOrFail()->id,
+            'solicitud_id' => (string) Str::uuid(),
+        ])->assertCreated()->json('data.folio');
+
+        $this->assertEqualsCanonicalizing([$administrator->id, $assigned->id, $unassigned->id],
+            InternalNotification::query()->where('kind', 'incident.created')->pluck('user_id')->all());
+        $this->assertDatabaseCount('incident_assignments', 0);
+        $this->assertDatabaseCount('push_deliveries', 3);
+        $this->assertDatabaseCount('jobs', 3);
+
+        $this->asDevice($administrator, $administratorDevice)->postJson('/api/incidents/'.$folio.'/management', [
+            'version' => 0, 'responsable_id' => $assigned->id, 'prioridad' => 'Alta',
+        ])->assertOk();
+        $notice = InternalNotification::query()->where('kind', 'incident.assigned')->sole();
+        $this->assertSame($assigned->id, $notice->user_id);
+        $this->assertDatabaseCount('push_deliveries', 4);
+        $this->assertDatabaseCount('jobs', 4);
+
+        $this->actingAs($assigned)->withSession(['account_auth_version' => $assigned->auth_version]);
+        $this->getJson('/api/notifications/'.$notice->id.'/incident')->assertOk()
+            ->assertJsonPath('data.permisos.confirmarRecepcion', true)->assertJsonMissingPath('data.soloResumen');
     }
 
     public function test_disabled_delivery_keeps_internal_notifications_without_creating_jobs(): void

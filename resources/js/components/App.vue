@@ -215,6 +215,7 @@ function cerrarSesion() {
     vistaResponsable.value = 'alertas';
     usuarioActualId.value = null;
     solicitudDetalle.value = null;
+    resumenIncidente.value = null;
     mensajeNotificacion.value = '';
 }
 watch(
@@ -242,6 +243,7 @@ watch(
 );
 
 function abrirBotonPanico() {
+    resumenIncidente.value = null;
     pantalla.value = 'panico';
 }
 
@@ -419,13 +421,14 @@ function registrarIncidente(reporte) {
         seguimientos: [],
         
     });
-if (configuracion.value.notificarNuevos) {
-    notificarUsuarios(idsAdministradores(), {
-        folio: reporte.folio,
-        titulo: 'Nuevo incidente registrado',
-        descripcion: 'Se recibió un nuevo reporte pendiente de revisión.',
-    });
-    }   
+    if (configuracion.value.notificarNuevos) {
+        notificarUsuarios(usuarios.value.filter(usuario => usuario.activo).map(usuario => usuario.id), {
+            folio: reporte.folio,
+            titulo: 'Nueva emergencia',
+            descripcion: 'Se reportó una emergencia. Abre el aviso para consultar el tipo y la ubicación.',
+            nuevoIncidente: true,
+        });
+    }
 }
 function guardarSeguimientoResponsable(cambio, responder) {
     const finalizar = resultado => {
@@ -546,6 +549,7 @@ function guardarSeguimientoResponsable(cambio, responder) {
 }
 const notificaciones = ref([]);
 const solicitudDetalle = ref(null);
+const resumenIncidente = ref(null);
 const mensajeNotificacion = ref('');
 
 let siguienteNotificacionId = 1;
@@ -572,8 +576,7 @@ function notificarUsuarios(ids, datos) {
             usuario => usuario.id === usuarioId && usuario.activo
         );
 
-        // No genera un aviso de la propia acción para quien la realizó.
-        if (!cuenta || cuenta.id === usuarioActualId.value) continue;
+        if (!cuenta || (!datos.nuevoIncidente && cuenta.id === usuarioActualId.value)) continue;
 
         notificaciones.value.unshift({
             id: siguienteNotificacionId++,
@@ -581,6 +584,7 @@ function notificarUsuarios(ids, datos) {
             folio: datos.folio,
             titulo: datos.titulo,
             descripcion: datos.descripcion,
+            nuevoIncidente: datos.nuevoIncidente === true,
             fecha,
             leida: false,
         });
@@ -679,6 +683,13 @@ function abrirNotificacion(id) {
         incidente.reportanteId === usuarioActualId.value;
 
     if (!esAsignado && !esPropio) {
+        if (aviso.nuevoIncidente) {
+            const { folio, tipo, ubicacion, fecha, hora } = incidente;
+            resumenIncidente.value = { folio, tipo, ubicacion, fecha, hora };
+            marcarNotificacionLeida(id);
+            return;
+        }
+
         mensajeNotificacion.value =
             'Este caso ya no está asignado a tu cuenta ni pertenece a tus reportes.';
         return;
@@ -839,6 +850,8 @@ function guardarConfiguracion(nueva, responder) {
     <template #notificaciones>
     <Notificaciones
         :notificaciones="notificacionesActuales"
+        :resumen-incidente="resumenIncidente"
+        @cerrar-resumen="resumenIncidente = null"
         @abrir="abrirNotificacion"
         @leer="marcarNotificacionLeida"
         @leer-todas="marcarTodasNotificaciones"

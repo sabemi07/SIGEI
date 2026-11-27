@@ -43,6 +43,7 @@ Route::prefix('api')->middleware([PreventApiCaching::class, IdentifyPushDevice::
         Route::post('/incidents/{incident:folio}/close', [IncidentWriteController::class, 'close']);
         Route::get('/notifications', [InternalNotificationController::class, 'index']);
         Route::post('/notifications/read-all', [InternalNotificationController::class, 'readAll']);
+        Route::get('/notifications/{notification}/incident', [InternalNotificationController::class, 'showIncident']);
         Route::post('/notifications/{notification}/read', [InternalNotificationController::class, 'read']);
     });
 });

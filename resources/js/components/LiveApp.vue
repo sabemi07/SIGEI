@@ -33,6 +33,7 @@ const responsables = ref([]);
 const notificaciones = ref([]);
 const seleccionado = ref(null);
 const solicitudDetalle = ref(null);
+const resumenIncidente = ref(null);
 const origenDetalle = ref('incidentes');
 const cargandoDatos = ref(false);
 const datosCompletos = ref(false);
@@ -90,6 +91,7 @@ function aplicarCuenta(cuenta) {
         seleccionado.value = null;
         cargaDetalle += 1;
         solicitudDetalle.value = null;
+        resumenIncidente.value = null;
         datosCompletos.value = false;
         vistaAdmin.value = 'dashboard';
         vistaResponsable.value = 'alertas';
@@ -103,6 +105,7 @@ function aplicarCuenta(cuenta) {
 function abrirBotonPanico() {
     olvidarAvisoPendiente();
     cargaDetalle += 1;
+    resumenIncidente.value = null;
     pantalla.value = 'panico';
     revisarSesion();
 }
@@ -667,18 +670,20 @@ async function abrirNotificacion(id) {
     const version = versionSesion;
     const cuenta = claveCuenta(usuario.value);
     try {
-        const respuesta = await api.request(`/api/incidents/${encodeURIComponent(aviso.folio)}`);
+        const { data: incidente } = await api.request(`/api/notifications/${encodeURIComponent(id)}/incident`);
         if (!contextoActual(version, cuenta) || solicitud !== cargaDetalle) return;
-        if (usuario.value.rol === 'Administrador') {
-            seleccionado.value = respuesta.data;
+        if (incidente.soloResumen) {
+            resumenIncidente.value = incidente;
+        } else if (usuario.value.rol === 'Administrador') {
+            seleccionado.value = incidente;
             mostrarEliminados.value = false;
             origenDetalle.value = 'incidentes';
             vistaAdmin.value = 'detalle-incidente';
         } else {
             await actualizarPanel();
             if (!contextoActual(version, cuenta) || solicitud !== cargaDetalle) return;
-            vistaResponsable.value = respuesta.data.responsableId === usuario.value.id ? 'alertas' : 'mis-reportes';
-            solicitudDetalle.value = { folio: aviso.folio };
+            vistaResponsable.value = incidente.responsableId === usuario.value.id ? 'alertas' : 'mis-reportes';
+            solicitudDetalle.value = { folio: incidente.folio };
         }
         await marcarLeida(id);
     } catch (error) {
@@ -817,7 +822,7 @@ onBeforeUnmount(() => {
 
     <ResponsableLayout v-else-if="usuario?.rol === 'Responsable'" :demo="false" :busy="ocupado" :usuario="usuario" :configuracion="configuracion" :active-view="vistaResponsable" @navigate="cambiarVistaResponsable" @logout="cerrarSesion" @reportar="abrirBotonPanico">
         <template #notificaciones>
-            <Notificaciones real :push-state="estadoPush" :notificaciones="notificaciones" @abrir="abrirNotificacion" @leer="marcarLeida" @leer-todas="marcarTodas" @vincular="vincularDispositivo" @desvincular="desvincularDispositivo" @revisar-dispositivo="clientePush.refresh" @probar="probarNotificaciones" />
+            <Notificaciones real :push-state="estadoPush" :notificaciones="notificaciones" :resumen-incidente="resumenIncidente" @cerrar-resumen="resumenIncidente = null" @abrir="abrirNotificacion" @leer="marcarLeida" @leer-todas="marcarTodas" @vincular="vincularDispositivo" @desvincular="desvincularDispositivo" @revisar-dispositivo="clientePush.refresh" @probar="probarNotificaciones" />
             <button type="button" class="btn btn-outline-danger btn-sm" @click="abrirBotonPanico">Botón de pánico</button>
         </template>
         <div class="d-flex justify-content-end mb-3">

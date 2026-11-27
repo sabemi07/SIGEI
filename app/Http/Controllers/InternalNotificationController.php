@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\IncidentAlertResource;
+use App\Http\Resources\IncidentResource;
 use App\Models\InternalNotification;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 class InternalNotificationController extends Controller
 {
@@ -36,6 +39,22 @@ class InternalNotificationController extends Controller
                 'total' => $notifications->total(),
             ],
         ]);
+    }
+
+    public function showIncident(Request $request, InternalNotification $notification): IncidentResource|IncidentAlertResource
+    {
+        $user = $request->user();
+        abort_unless($notification->user_id === $user->id, 404);
+        $incident = $notification->incident;
+        abort_if($incident === null, 404);
+
+        if (Gate::forUser($user)->allows('view', $incident)) {
+            return new IncidentResource($incident);
+        }
+
+        abort_unless($notification->isNewIncidentAlert(), 404);
+
+        return new IncidentAlertResource($incident);
     }
 
     public function read(Request $request, InternalNotification $notification): JsonResponse

@@ -97,7 +97,9 @@ class WebPushService
             return $notification->incident_id === null;
         }
 
-        return $notification->incident !== null && Gate::forUser($user)->allows('view', $notification->incident);
+        $incident = $notification->incident;
+
+        return $incident !== null && ($notification->isNewIncidentAlert() || Gate::forUser($user)->allows('view', $incident));
     }
 
     public function send(int $deliveryId): bool

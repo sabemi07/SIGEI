@@ -409,7 +409,7 @@ function restablecerFormulario(datos) {
                     <span>
                         <strong>Nuevos incidentes</strong>
                         <small>
-                            Avisar al Administrador cuando se registre un caso.
+                            Avisar a todos los Administradores y Responsables activos cuando se registre un caso.
                         </small>
                     </span>
 
