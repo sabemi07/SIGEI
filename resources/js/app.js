@@ -5,5 +5,7 @@ import 'bootstrap';
 import '../css/app.css';
 
 import App from './components/App.vue';
+import LiveApp from './components/LiveApp.vue';
 
-createApp(App).mount('#app');
+const root = document.getElementById('app');
+createApp(root?.dataset.runtime === 'laravel' ? LiveApp : App).mount(root);

@@ -3,6 +3,7 @@
 import { computed } from 'vue';
 
 const props = defineProps({
+    demo: { type: Boolean, default: true },
     incidentes: {
         type: Array,
         default: () => [],
@@ -92,7 +93,7 @@ function colorEstado(estado) {
                 </p>
             </div>
 
-            <span class="demo-label">DATOS DE DEMOSTRACIÓN</span>
+            <span class="demo-label">{{ demo ? 'DATOS DE DEMOSTRACIÓN' : 'REGISTROS DEL SISTEMA' }}</span>
         </section>
 
         <section class="indicator-grid">
@@ -144,7 +145,7 @@ function colorEstado(estado) {
 
                     <tbody>
                         <tr v-for="item in incidentes" :key="item.folio">
-                            <td class="folio">{{ item.folio }}</td>
+                            <td class="folio">{{ item.folioCorto ?? item.folio }}</td>
                             <td>{{ item.tipo }}</td>
                             <td>{{ item.ubicacion }}</td>
                             <td>{{ item.hora }}</td>

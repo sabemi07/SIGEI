@@ -1,0 +1,22 @@
+<?php
+
+namespace App\Http\Resources;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+class AccountResource extends JsonResource
+{
+    /** @return array<string, mixed> */
+    public function toArray(Request $request): array
+    {
+        return [
+            'id' => $this->id,
+            'nombre' => $this->name,
+            'correo' => $this->email,
+            'rol' => $this->role->value,
+            'area' => $this->area ?? '',
+            'activo' => $this->is_active,
+        ];
+    }
+}

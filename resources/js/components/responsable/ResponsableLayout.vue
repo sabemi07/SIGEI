@@ -2,6 +2,8 @@
 import { computed } from 'vue';
 
 const props = defineProps({
+    demo: { type: Boolean, default: true },
+    busy: { type: Boolean, default: false },
     configuracion: {
         type: Object,
         default: () => ({
@@ -42,14 +44,22 @@ const titulos = {
 
 <template>
     <div class="responsable-layout">
-        <aside class="responsable-sidebar">
+        <aside class="responsable-sidebar panel-sidebar">
             <div class="responsable-brand">
                 <div class="responsable-brand-icon">+</div>
 
-                <div>
+                <div class="responsable-brand-copy">
                     <h2>{{ configuracion.siglas }}</h2>
                     <span>{{ configuracion.institucion }}</span>
                 </div>
+                <button
+                    type="button"
+                    class="btn btn-outline-light btn-sm panel-mobile-logout"
+                    :disabled="busy"
+                    @click="emit('logout')"
+                >
+                    Cerrar sesión
+                </button>
             </div>
 
             <div class="responsable-menu-label">
@@ -98,12 +108,13 @@ const titulos = {
             <div class="responsable-sidebar-footer">
                 <div class="responsable-demo-badge">
                     <span aria-hidden="true"></span>
-                    Modo demostración
+                    {{ demo ? 'Modo demostración' : 'Sesión institucional' }}
                 </div>
 
                 <button
                     type="button"
                     class="responsable-logout"
+                    :disabled="busy"
                     @click="emit('logout')"
                 >
                     Cerrar sesión
@@ -122,14 +133,7 @@ const titulos = {
                 </div>
 
                 <div class="responsable-profile">
-                <slot name="notificaciones" />
-                    <button
-                        type="button"
-                        class="btn btn-outline-secondary btn-sm mobile-logout"
-                        @click="emit('logout')"
-                    >
-                        Cerrar sesión
-                    </button>
+                    <slot name="notificaciones" />
                     <div
                         class="responsable-profile-avatar"
                         aria-hidden="true"
@@ -139,7 +143,7 @@ const titulos = {
 
                     <div class="responsable-profile-info">
                         <strong>{{ usuario?.nombre || 'Responsable' }}</strong>
-                        <span>{{ usuario?.rol || 'Responsable' }} · Demostración</span>
+                        <span>{{ usuario?.rol || 'Responsable' }} · {{ demo ? 'Demostración' : 'Cuenta institucional' }}</span>
                     </div>
                 </div>
             </header>
@@ -446,16 +450,6 @@ const titulos = {
         padding: 14px 20px;
     }
 }
-.mobile-logout {
-    display: none;
-}
-
-@media (max-width: 760px) {
-    .mobile-logout {
-        display: inline-flex;
-        flex-shrink: 0;
-    }
-}
 @media (max-width: 560px) {
     .responsable-topbar {
         flex-wrap: wrap;
@@ -467,7 +461,7 @@ const titulos = {
     }
 }
 
-.responsable-brand > div:last-child {
+.responsable-brand-copy {
     min-width: 0;
 }
 .responsable-brand h2,

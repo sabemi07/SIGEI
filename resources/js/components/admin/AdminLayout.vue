@@ -1,6 +1,8 @@
 <script setup>
 import { computed } from 'vue';
 const props = defineProps({
+    demo: { type: Boolean, default: true },
+    busy: { type: Boolean, default: false },
     configuracion: {
         type: Object,
         default: () => ({
@@ -51,14 +53,22 @@ function navegar(id) {
 
 <template>
     <div class="admin-layout">
-        <aside class="admin-sidebar">
+        <aside class="admin-sidebar panel-sidebar">
             <div class="admin-brand">
                 <div class="admin-brand-icon">+</div>
 
-                <div>
+                <div class="admin-brand-copy">
                     <h2>{{ configuracion.siglas }}</h2>
                     <span>{{ configuracion.institucion }}</span>
                 </div>
+                <button
+                    type="button"
+                    class="btn btn-outline-light btn-sm panel-mobile-logout"
+                    :disabled="busy"
+                    @click="emit('logout')"
+                >
+                    Cerrar sesión
+                </button>
             </div>
 
             <div class="admin-menu-label">MENÚ PRINCIPAL</div>
@@ -83,15 +93,16 @@ function navegar(id) {
             <div class="admin-sidebar-footer">
                 <div class="admin-demo-badge">
                     <span></span>
-                    Modo demostración
+                    {{ demo ? 'Modo demostración' : 'Sesión institucional' }}
                 </div>
 
                 <button
                     type="button"
                     class="admin-logout"
+                    :disabled="busy"
                     @click="emit('logout')"
                 >
-                    Cerrar Sesión
+                    Cerrar sesión
                 </button>
             </div>
         </aside>
@@ -107,19 +118,12 @@ function navegar(id) {
                 </div>
 
                 <div class="admin-profile">
-                <slot name="notificaciones" />
-                    <button
-                        type="button"
-                        class="btn btn-outline-secondary btn-sm mobile-logout"
-                        @click="emit('logout')"
-                    >
-                        Cerrar sesión
-                    </button>
+                    <slot name="notificaciones" />
                     <div class="admin-profile-avatar" aria-hidden="true">{{ iniciales }}</div>
 
                     <div class="admin-profile-info">
                         <strong>{{ usuario?.nombre || 'Administrador' }}</strong>
-                        <span>{{ usuario?.rol || 'Administrador' }} · Demostración</span>
+                        <span>{{ usuario?.rol || 'Administrador' }} · {{ demo ? 'Demostración' : 'Cuenta institucional' }}</span>
                     </div>
                 </div>
             </header>
@@ -405,16 +409,6 @@ function navegar(id) {
         padding: 14px 20px;
     }
 }
-.mobile-logout {
-    display: none;
-}
-
-@media (max-width: 760px) {
-    .mobile-logout {
-        display: inline-flex;
-        flex-shrink: 0;
-    }
-}
 @media (max-width: 560px) {
     .admin-topbar {
         flex-wrap: wrap;
@@ -426,7 +420,7 @@ function navegar(id) {
     }
 }
 
-.admin-brand > div:last-child {
+.admin-brand-copy {
     min-width: 0;
 }
 .admin-brand h2,

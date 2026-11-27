@@ -1,0 +1,12 @@
+{
+  "id": "/",
+  "name": "SIGEI · Gestión de Emergencias Institucionales",
+  "short_name": "SIGEI",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "lang": "es",
+  "background_color": "#ffffff",
+  "theme_color": "#dc3545",
+  "icons": [{ "src": "/sigei-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

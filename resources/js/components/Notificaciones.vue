@@ -1,21 +1,29 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps({
+    real: { type: Boolean, default: false },
+    pushState: { type: Object, default: () => ({ busy: false, bound: false, canLink: false, message: 'Comprobando el dispositivo…', error: '' }) },
     notificaciones: {
         type: Array,
         default: () => [],
     },
+    resumenIncidente: { type: Object, default: null },
 });
 
-const emit = defineEmits(['abrir', 'leer', 'leer-todas']);
+const emit = defineEmits(['abrir', 'leer', 'leer-todas', 'vincular', 'desvincular', 'revisar-dispositivo', 'probar', 'cerrar-resumen']);
 
 const contenedor = ref(null);
 const botonCampana = ref(null);
+const dialogoResumen = ref(null);
 const abierto = ref(false);
 const soloSinLeer = ref(false);
 
 const panelId = 'panel-notificaciones';
+
+watch(dialogoResumen, dialogo => {
+    if (dialogo && !dialogo.open) dialogo.showModal();
+}, { flush: 'post' });
 
 const sinLeer = computed(() =>
     props.notificaciones.filter(item => !item.leida).length
@@ -48,6 +56,7 @@ const textoPermiso = computed(() =>
 );
 
 function revisarPermisoDispositivo() {
+    if (props.real) return;
     if (typeof window === 'undefined') return;
 
     if (!window.isSecureContext) {
@@ -224,7 +233,7 @@ onBeforeUnmount(() => {
 
                     <p>{{ item.descripcion }}</p>
 
-                    <span class="notification-folio">{{ item.folio }}</span>
+                    <span class="notification-folio">{{ item.folioCorto ?? item.folio }}</span>
                     <small>{{ item.fecha }}</small>
 
                     <div class="notification-actions">
@@ -240,7 +249,7 @@ onBeforeUnmount(() => {
                             v-if="!item.leida"
                             type="button"
                             class="read-button"
-                            :aria-label="`Marcar como leída: ${item.titulo}, ${item.folio}`"
+                            :aria-label="`Marcar como leída: ${item.titulo}, ${item.folioCorto ?? item.folio}`"
                             @click="emit('leer', item.id)"
                         >
                             Marcar leída
@@ -259,6 +268,21 @@ onBeforeUnmount(() => {
 
             <section class="device-settings" aria-labelledby="titulo-avisos-dispositivo">
                 <h3 id="titulo-avisos-dispositivo">Avisos en este dispositivo</h3>
+                <template v-if="real">
+                    <p role="status">{{ pushState.message }}</p>
+                    <button v-if="pushState.bound" type="button" class="device-permission-button" :disabled="pushState.busy" @click="emit('desvincular')">
+                        {{ pushState.busy ? 'Procesando…' : 'Desvincular este dispositivo' }}
+                    </button>
+                    <button v-else-if="pushState.canLink" type="button" class="device-permission-button" :disabled="pushState.busy" @click="emit('vincular')">
+                        {{ pushState.busy ? 'Vinculando…' : 'Vincular este dispositivo con mi cuenta' }}
+                    </button>
+                    <button type="button" class="text-button" :disabled="pushState.busy" @click="emit('revisar-dispositivo')">Comprobar dispositivo</button>
+                    <button v-if="pushState.canTest" type="button" class="device-permission-button" :disabled="pushState.busy || pushState.testPending" @click="emit('probar')">Enviar aviso de prueba</button>
+                    <p v-if="pushState.testMessage" role="status">{{ pushState.testMessage }}</p>
+                    <p v-if="pushState.error" class="device-permission-error" role="alert">{{ pushState.error }}</p>
+                    <small>La vinculación, la entrega de un aviso, su lectura y la confirmación de recepción son comprobaciones distintas.</small>
+                </template>
+                <template v-else>
                 <p role="status">{{ textoPermiso }}</p>
 
                 <button
@@ -284,16 +308,49 @@ onBeforeUnmount(() => {
                     {{ errorPermiso }}
                 </p>
                 <small>El permiso pertenece al navegador y al sitio; no a una cuenta de SIGEI. La campana interna funciona de forma independiente.</small>
+                </template>
             </section>
 
             <footer class="notifications-footer">
-                Hasta 5 avisos recientes de esta cuenta · Demostración
+                Hasta 5 avisos recientes de esta cuenta{{ real ? '' : ' · Demostración' }}
             </footer>
         </section>
+
+        <dialog
+            v-if="resumenIncidente"
+            ref="dialogoResumen"
+            class="incident-summary rounded-3 border-0 shadow p-4"
+            aria-labelledby="titulo-resumen-incidente"
+            @close="emit('cerrar-resumen')"
+        >
+            <h2 id="titulo-resumen-incidente" class="h5">Nueva emergencia</h2>
+            <dl class="mb-3">
+                <dt>Tipo de emergencia</dt>
+                <dd class="text-break">{{ resumenIncidente.tipo }}</dd>
+                <dt>Ubicación</dt>
+                <dd class="text-break">{{ resumenIncidente.ubicacion }}</dd>
+                <dt>Hora del reporte</dt>
+                <dd>{{ resumenIncidente.fecha }} · {{ resumenIncidente.hora }}</dd>
+                <dt>Folio</dt>
+                <dd>{{ resumenIncidente.folioCorto ?? resumenIncidente.folio }}</dd>
+            </dl>
+            <form method="dialog" class="d-flex justify-content-end">
+                <button type="submit" class="btn btn-outline-secondary btn-sm" autofocus>Cerrar resumen</button>
+            </form>
+        </dialog>
     </div>
 </template>
 
 <style scoped>
+.incident-summary {
+    width: min(26rem, calc(100% - 2rem));
+    color: #24344a;
+}
+
+.incident-summary::backdrop {
+    background: rgb(15 23 42 / 50%);
+}
+
 .notifications {
     position: relative;
     flex-shrink: 0;

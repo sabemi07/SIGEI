@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-// use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ExampleTest extends TestCase
@@ -12,8 +11,16 @@ class ExampleTest extends TestCase
      */
     public function test_the_application_returns_a_successful_response(): void
     {
+        $this->withoutVite();
+
         $response = $this->get('/');
 
-        $response->assertStatus(200);
+        $response->assertStatus(200)->assertSee('data-runtime="laravel"', false);
+    }
+
+    public function test_demonstration_is_available_separately_without_database_accounts(): void
+    {
+        $this->withoutVite();
+        $this->get('/demo')->assertOk()->assertSee('data-runtime="demo"', false);
     }
 }
